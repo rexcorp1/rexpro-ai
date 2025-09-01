@@ -20,7 +20,8 @@
     "react-syntax-highlighter": "^15.6.5",
     "rehype-katex": "^7.0.0",
     "remark-gfm": "^4.0.0",
-    "remark-math": "^3.0.1"
+    "remark-math": "^3.0.1",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.66",
