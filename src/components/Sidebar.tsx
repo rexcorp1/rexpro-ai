@@ -486,12 +486,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               min={0} max={2} step={0.01}
           />
 
-          <Dropdown
-            label="Media resolution"
-            options={mediaResolutionOptions}
-            selectedValue={mediaResolution}
-            onSelect={(val) => setMediaResolution(val as MediaResolution)}
-          />
+          {!isGemmaModel && (
+            <Dropdown
+              label="Media resolution"
+              options={mediaResolutionOptions}
+              selectedValue={mediaResolution}
+              onSelect={(val) => setMediaResolution(val as MediaResolution)}
+            />
+          )}
         </div>
 
         {isThinkingModel && (
