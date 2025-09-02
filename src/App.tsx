@@ -1,50 +1,263 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { Sidebar } from './components/Sidebar';
+import { ChatArea } from './components/ChatArea';
 import { Model, ChatMessage, Role, MediaResolution, Attachment, ChatSession, TunedModel, TuningStatus, Project, FileSystemNode, initialFiles, LiveConversationModel } from './types';
 import { generateChatResponse, countTokens, generateImage, generateVideo } from './services/geminiService';
-import { Settings, Settings2, PanelLeft } from 'lucide-react';
+import { Plus, PanelLeft, Settings, Settings2, Trash2, MoreVertical, Edit } from 'lucide-react';
 import { HeaderModelSelector } from './components/HeaderModelSelector';
 import { Modal } from './components/Modal';
 import { GenerateContentResponse, Type } from '@google/genai';
+import { FilesSidebar } from './components/FilesSidebar';
 import { ConfirmationModal } from './components/ConfirmationModal';
-import { useMediaQuery } from './hooks/useMediaQuery';
-import { NavigationSidebar } from './components/NavigationSidebar';
-import { StreamingTarget } from './components/CodeInterpreterPanel';
-
-const Sidebar = React.lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
-const ChatArea = React.lazy(() => import('./components/ChatArea').then(module => ({ default: module.ChatArea })));
-const FilesSidebar = React.lazy(() => import('./components/FilesSidebar').then(module => ({ default: module.FilesSidebar })));
-const CodeInterpreterPanel = React.lazy(() => import('./components/CodeInterpreterPanel'));
-const LiveConversation = React.lazy(() => import('./components/LiveConversation').then(module => ({ default: module.LiveConversation })));
-const SettingsModal = React.lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
+import CodeInterpreterPanel, { StreamingTarget } from './components/CodeInterpreterPanel';
+import { LiveConversation } from './components/LiveConversation';
+import { SettingsModal } from './components/SettingsModal';
 
 
-const modelMaxTokens: Partial<Record<Model, number>> = {
-    [Model.GEMINI_2_5_PRO]: 1048576,
-    [Model.GEMINI_2_5_FLASH]: 1048576,
-    [Model.GEMINI_2_5_FLASH_LITE]: 1048576,
-    [Model.GEMINI_2_5_FLASH_IMAGE_PREVIEW]: 32768,
-    [Model.GEMINI_2_0_FLASH]: 1048576,
-    [Model.GEMINI_2_0_FLASH_PREVIEW_IMAGE_GENERATION]: 32768,
-    [Model.GEMINI_2_0_FLASH_LITE]: 1048576,
-    [Model.IMAGEN_4_0_GENERATE_001]: 4096,
-    [Model.IMAGEN_4_0_ULTRA_GENERATE_001]: 4096,
-    [Model.IMAGEN_4_0_FAST_GENERATE_001]: 4096,
-    [Model.IMAGEN_3_0_GENERATE_002]: 4096,
-    [Model.VEO_2_0_GENERATE_001]: 32768,
-    [Model.GEMMA_3N_E2B]: 8192,
-    [Model.GEMMA_3N_E4B]: 8192,
-    [Model.GEMMA_3_1B]: 32768,
-    [Model.GEMMA_3_4B]: 32768,
-    [Model.GEMMA_3_12B]: 32768,
-    [Model.GEMMA_3_27B]: 131072,
+const useMediaQuery = (query: string) => {
+    const [matches, setMatches] = React.useState(() => window.matchMedia(query).matches);
+
+    React.useEffect(() => {
+        const mediaQuery = window.matchMedia(query);
+        const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
+        mediaQuery.addEventListener('change', handler);
+        return () => mediaQuery.removeEventListener('change', handler);
+    }, [query]);
+
+    return matches;
 };
 
-const createNewProject = (name = 'New Project', description = 'A new coding project.'): Project => ({
-    id: `proj_${Date.now()}`,
-    name,
-    description,
-    files: JSON.parse(JSON.stringify(initialFiles)),
-});
+const NavigationSidebar: React.FC<{
+  isSidebarOpen: boolean;
+  onNewChat: () => void;
+  chatHistory: ChatSession[];
+  activeChatId: string | null;
+  onSelectChat: (id: string) => void;
+  onDeleteChat: (id: string) => void;
+  onRenameChat: (id: string, newTitle: string) => void;
+  isMobile: boolean;
+  onOpenSettings: () => void;
+}> = ({ isSidebarOpen, onNewChat, chatHistory, activeChatId, onSelectChat, onDeleteChat, onRenameChat, isMobile, onOpenSettings }) => {
+  const isActuallyOpen = isMobile ? true : isSidebarOpen;
+  
+  const [menuId, setMenuId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [bottomSheetChat, setBottomSheetChat] = useState<ChatSession | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const longPressTimer = useRef<number | null>(null);
+  const isLongPress = useRef(false);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+  
+  useEffect(() => {
+    if (renamingId && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [renamingId]);
+
+  const handleTouchStart = (chat: ChatSession) => {
+    isLongPress.current = false;
+    longPressTimer.current = window.setTimeout(() => {
+        isLongPress.current = true;
+        setBottomSheetChat(chat);
+    }, 500); // 500ms for long press
+  };
+
+  const handleTouchEnd = () => {
+    if (longPressTimer.current) {
+        clearTimeout(longPressTimer.current);
+    }
+  };
+
+  const handleTouchMove = () => {
+      if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+      }
+  };
+  
+  const handleClick = (chat: ChatSession) => {
+      if (isMobile && isLongPress.current) {
+          return; // Prevent navigation on long press
+      }
+      if (renamingId !== chat.id) {
+          onSelectChat(chat.id);
+      }
+  };
+
+  const handleRenameStart = (id: string, currentTitle: string) => {
+    setRenamingId(id);
+    setRenameValue(currentTitle);
+    setMenuId(null);
+  };
+
+  const handleRenameSubmit = () => {
+    if (renamingId && renameValue.trim()) {
+      onRenameChat(renamingId, renameValue);
+    }
+    setRenamingId(null);
+  };
+  
+  const handleMobileRenameStart = (id: string, currentTitle: string) => {
+      setBottomSheetChat(null);
+      // Delay allows sheet to close before input appears
+      setTimeout(() => handleRenameStart(id, currentTitle), 100);
+  };
+  
+  const handleMobileDelete = (id: string) => {
+      setBottomSheetChat(null);
+      onDeleteChat(id);
+  };
+  
+  return (
+    <>
+        <aside
+          className={`
+            bg-white dark:bg-gray-950 flex flex-col p-4
+            transition-all duration-300 ease-in-out flex-shrink-0
+            ${ isMobile
+                ? `fixed top-14 bottom-0 left-0 z-30 w-[260px] shadow-lg ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+                : `${isSidebarOpen ? 'w-[260px]' : 'w-20'}`
+            }
+          `}
+        >
+          <div className={`flex items-center gap-2 mb-6 px-1 flex-shrink-0 overflow-hidden ${isMobile ? 'hidden' : ''}`}>
+              <div className="w-8 h-8 bg-black rounded-md flex items-center justify-center flex-shrink-0">
+                  <span className="font-bold text-white text-xl">R</span>
+              </div>
+              <h1 className={`text-lg font-semibold text-gray-800 dark:text-gray-200 whitespace-nowrap transition-opacity duration-200 ${isActuallyOpen ? 'opacity-100' : 'opacity-0'}`}>REXPro AI</h1>
+          </div>
+          <button
+            onClick={onNewChat}
+            data-tooltip-text="New Chat"
+            data-tooltip-position={isActuallyOpen ? "bottom" : "right"}
+            className="flex items-center w-[85%] px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors flex-shrink-0"
+          >
+            <Plus className="w-4 h-4 flex-shrink-0" />
+            <span className={`ml-2 whitespace-nowrap overflow-hidden transition-all duration-200 ${isActuallyOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>New Chat</span>
+          </button>
+
+          <div className={`mt-6 flex-1 overflow-y-auto overflow-x-hidden transition-opacity duration-200 hover-scrollbar [scrollbar-gutter:stable] ${isActuallyOpen ? 'opacity-100' : 'opacity-0'}`}>
+            <h2 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-2 px-3">HISTORY</h2>
+            <nav className="space-y-1">
+              {chatHistory.map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => handleClick(chat)}
+                  onTouchStart={isMobile ? () => handleTouchStart(chat) : undefined}
+                  onTouchEnd={isMobile ? handleTouchEnd : undefined}
+                  onTouchMove={isMobile ? handleTouchMove : undefined}
+                  className={`group flex items-center justify-between px-3 py-2 text-sm text-gray-600 dark:text-gray-400 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 ${chat.id === activeChatId ? 'bg-gray-100 dark:bg-gray-800/80 font-semibold' : ''}`}
+                >
+                  {renamingId === chat.id ? (
+                    <input
+                        ref={renameInputRef}
+                        type="text"
+                        value={renameValue}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={handleRenameSubmit}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleRenameSubmit();
+                            if (e.key === 'Escape') setRenamingId(null);
+                        }}
+                        className="w-full bg-transparent border-b border-blue-500 focus:outline-none text-sm"
+                    />
+                  ) : (
+                    <span className="truncate flex-1">{chat.title}</span>
+                  )}
+                  
+                  <div className="relative flex-shrink-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setMenuId(menuId === chat.id ? null : chat.id);
+                      }}
+                      data-tooltip-text="Options"
+                      data-tooltip-position="left"
+                      className="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 p-1 rounded-full transition-opacity hidden md:flex"
+                      aria-label={`Options for chat: ${chat.title}`}
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </button>
+                     {!isMobile && menuId === chat.id && (
+                      <div ref={menuRef} className="absolute right-[-0.8rem] top-[2.5rem] w-40 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-10 p-1">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleRenameStart(chat.id, chat.title); }}
+                          className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md"
+                        >
+                          <Edit className="w-3.5 h-3.5" /> Rename
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onDeleteChat(chat.id); setMenuId(null); }}
+                          className="w-full text-left flex items-center gap-2 px-3 py-1.5 text-sm text-red-600 dark:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Delete
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          </div>
+
+          <div className={`mt-auto flex-shrink-0 whitespace-nowrap transition-opacity duration-200 ${isActuallyOpen ? 'opacity-100' : 'opacity-0'}`}>
+            <button
+              onClick={onOpenSettings}
+              data-tooltip-text="Settings"
+              data-tooltip-position={isActuallyOpen ? "top" : "right"}
+              className="flex items-center w-[85%] px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors flex-shrink-0 mb-6"
+            >
+              <Settings className="w-4 h-4 flex-shrink-0" />
+              <span className={`ml-2 whitespace-nowrap overflow-hidden transition-all duration-200 ${isActuallyOpen ? 'w-auto opacity-100' : 'w-0 opacity-0'}`}>Settings</span>
+            </button>
+            <p className="text-sm text-gray-500 dark:text-gray-400 pl-1">Signed in as <span className="font-bold text-gray-800 dark:text-gray-100">omniverse1</span></p>
+          </div>
+        </aside>
+        
+        {isMobile && bottomSheetChat && (
+            <>
+                <div 
+                    className="fixed inset-0 bg-black/50 z-40 animate-fade-in" 
+                    onClick={() => setBottomSheetChat(null)}
+                />
+                <div className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-2xl z-50 p-4 pb-6 shadow-lg animate-slide-up">
+                    <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-4"></div>
+                    <div className="mb-4 px-2">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Options for:</p>
+                        <p className="font-semibold text-gray-800 dark:text-gray-200 truncate">{bottomSheetChat.title}</p>
+                    </div>
+                    <div className="space-y-2">
+                        <button
+                            onClick={() => handleMobileRenameStart(bottomSheetChat.id, bottomSheetChat.title)}
+                            className="w-full text-left flex items-center gap-3 px-4 py-3 text-base text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+                        >
+                            <Edit className="w-5 h-5" /> Rename
+                        </button>
+                        <button
+                            onClick={() => handleMobileDelete(bottomSheetChat.id)}
+                            className="w-full text-left flex items-center gap-3 px-4 py-3 text-base text-red-600 dark:text-red-500 hover:bg-red-900/20 rounded-lg transition-colors"
+                        >
+                            <Trash2 className="w-5 h-5" /> Delete
+                        </button>
+                    </div>
+                </div>
+            </>
+        )}
+    </>
+  );
+};
 
 const findAndUpdateFile = (nodes: { [key: string]: FileSystemNode }, path: string, content: string): boolean => {
     const parts = path.split('/');
@@ -74,6 +287,35 @@ const findAndUpdateFile = (nodes: { [key: string]: FileSystemNode }, path: strin
     }
     return true;
 };
+
+
+const modelMaxTokens: Partial<Record<Model, number>> = {
+    [Model.GEMINI_2_5_PRO]: 1048576,
+    [Model.GEMINI_2_5_FLASH]: 1048576,
+    [Model.GEMINI_2_5_FLASH_LITE]: 1048576,
+    [Model.GEMINI_2_5_FLASH_IMAGE_PREVIEW]: 32768,
+    [Model.GEMINI_2_0_FLASH]: 1048576,
+    [Model.GEMINI_2_0_FLASH_PREVIEW_IMAGE_GENERATION]: 32768,
+    [Model.GEMINI_2_0_FLASH_LITE]: 1048576,
+    [Model.IMAGEN_4_0_GENERATE_001]: 4096,
+    [Model.IMAGEN_4_0_ULTRA_GENERATE_001]: 4096,
+    [Model.IMAGEN_4_0_FAST_GENERATE_001]: 4096,
+    [Model.IMAGEN_3_0_GENERATE_002]: 4096,
+    [Model.VEO_2_0_GENERATE_001]: 32768,
+    [Model.GEMMA_3N_E2B]: 8192,
+    [Model.GEMMA_3N_E4B]: 8192,
+    [Model.GEMMA_3_1B]: 32768,
+    [Model.GEMMA_3_4B]: 32768,
+    [Model.GEMMA_3_12B]: 32768,
+    [Model.GEMMA_3_27B]: 131072,
+};
+
+const createNewProject = (name = 'New Project', description = 'A new coding project.'): Project => ({
+    id: `proj_${Date.now()}`,
+    name,
+    description,
+    files: JSON.parse(JSON.stringify(initialFiles)),
+});
 
 const App: React.FC = () => {
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -119,6 +361,7 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isClearHistoryModalOpen, setIsClearHistoryModalOpen] = useState(false);
   
+  // Code Interpreter & Tools State
   const [isCodeInterpreterToggled, setIsCodeInterpreterToggled] = useState<boolean>(false);
   const [isDeepResearchToggled, setIsDeepResearchToggled] = useState<boolean>(false);
   const [isImageToolActive, setIsImageToolActive] = useState<boolean>(false);
@@ -129,17 +372,10 @@ const App: React.FC = () => {
   const [pendingProjectUpdate, setPendingProjectUpdate] = useState<Project | null>(null);
   const [isWidePreview, setIsWidePreview] = useState<boolean>(false);
   const [isLiveConversationOpen, setIsLiveConversationOpen] = useState(false);
-  const [liveConversationModel, setLiveConversationModel] = useState<LiveConversationModel>(() => {
-    try {
-        const savedModel = localStorage.getItem('liveConversationModel');
-        return (savedModel as LiveConversationModel) || LiveConversationModel.FLASH_2_5_NATIVE_AUDIO;
-    } catch (error) {
-        console.error("Failed to load live conversation model from localStorage", error);
-        return LiveConversationModel.FLASH_2_5_NATIVE_AUDIO;
-    }
-  });
+  const [liveConversationModel, setLiveConversationModel] = useState<LiveConversationModel>(LiveConversationModel.GEMINI_2_5_FLASH_NATIVE_AUDIO);
 
 
+  // Sidebar settings state
   const [systemInstruction, setSystemInstruction] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(1);
   const [topP, setTopP] = useState<number>(0.95);
@@ -152,12 +388,14 @@ const App: React.FC = () => {
   const [useThinkingBudget, setUseThinkingBudget] = useState<boolean>(false);
   const [thinkingBudget, setThinkingBudget] = useState<number>(8000);
 
+  // Imagen settings state
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [negativePrompt, setNegativePrompt] = useState<string>('');
   const [seed, setSeed] = useState<number | undefined>(undefined);
   const [aspectRatio, setAspectRatio] = useState<string>('1:1');
   const [personGeneration, setPersonGeneration] = useState<string>('allow_all');
 
+  // Tools state
   const [useStructuredOutput, setUseStructuredOutput] = useState<boolean>(false);
   const [structuredOutputSchema, setStructuredOutputSchema] = useState<string>('');
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState<boolean>(false);
@@ -173,14 +411,15 @@ const App: React.FC = () => {
   const [useUrlContext, setUseUrlContext] = useState<boolean>(false);
   const [urlContext, setUrlContext] = useState<string>('');
   
+  // Tuning state
   const [tunedModels, setTunedModels] = useState<TunedModel[]>([]);
   
+  // Deletion confirmation state
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const fullResponseTextRef = useRef<string>('');
 
-  const activeChat = useMemo(() => activeChatId ? chatHistory.find(c => c.id === activeChatId) : null, [chatHistory, activeChatId]);
+  const activeChat = useMemo(() => chatHistory.find(c => c.id === activeChatId), [chatHistory, activeChatId]);
   const activeProject = useMemo(() => activeChat?.project, [activeChat]);
 
   useEffect(() => {
@@ -196,14 +435,18 @@ const App: React.FC = () => {
 
 
   const handleNewChat = useCallback(() => {
-    if (activeChatId === null) return;
-    
-    setActiveChatId(null);
+    const currentActiveChat = chatHistory.find(chat => chat.id === activeChatId);
+    if (currentActiveChat && currentActiveChat.messages.length === 0) return;
+
+    const newChatId = Date.now().toString();
+    const newChat: ChatSession = { id: newChatId, title: 'New Chat', messages: [] };
+    setChatHistory(prev => [newChat, ...prev]);
+    setActiveChatId(newChatId);
     setIsCodePanelVisible(false);
     setIsDeepResearchToggled(false);
     setIsImageToolActive(false);
     setIsVideoToolActive(false);
-  }, [activeChatId]);
+  }, [chatHistory, activeChatId]);
 
   useEffect(() => {
     const applyTheme = (t: 'light' | 'dark' | 'system') => {
@@ -232,10 +475,6 @@ const App: React.FC = () => {
   }, [theme]);
 
   useEffect(() => {
-    localStorage.setItem('liveConversationModel', liveConversationModel);
-  }, [liveConversationModel]);
-
-  useEffect(() => {
     const setAppHeight = () => document.documentElement.style.setProperty('--app-height', `${window.innerHeight}px`);
     window.addEventListener('resize', setAppHeight); setAppHeight();
     return () => window.removeEventListener('resize', setAppHeight);
@@ -245,14 +484,10 @@ const App: React.FC = () => {
     try {
         const historyToSave = chatHistory.filter(chat => chat.messages.length > 0);
         localStorage.setItem('chatHistory', JSON.stringify(historyToSave));
-        
         if (activeChatId) {
             const activeChatIsInSavedHistory = historyToSave.some(chat => chat.id === activeChatId);
-            if (activeChatIsInSavedHistory) {
-                localStorage.setItem('activeChatId', JSON.stringify(activeChatId));
-            } else {
-                localStorage.removeItem('activeChatId');
-            }
+            if (activeChatIsInSavedHistory) localStorage.setItem('activeChatId', JSON.stringify(activeChatId));
+            else localStorage.removeItem('activeChatId');
         } else {
             localStorage.removeItem('activeChatId');
         }
@@ -262,14 +497,9 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const activeChatExists = chatHistory.some(chat => chat.id === activeChatId);
-    if (activeChatId === null) return;
-    
-    if (chatHistory.length > 0 && !activeChatExists) {
-        setActiveChatId(chatHistory[0].id);
-    } else if (chatHistory.length === 0) {
-        setActiveChatId(null);
-    }
-  }, [chatHistory, activeChatId]);
+    if (chatHistory.length > 0 && !activeChatExists) setActiveChatId(chatHistory[0].id);
+    else if (chatHistory.length === 0) handleNewChat();
+  }, [chatHistory, activeChatId, handleNewChat]); 
 
   useEffect(() => {
     try {
@@ -331,6 +561,7 @@ const App: React.FC = () => {
   const deepResearchCompatibleModels: (Model | string)[] = [Model.GEMINI_2_5_PRO, Model.GEMINI_2_5_FLASH];
   const codeInterpreterCompatibleModels: (Model | string)[] = [
     Model.GEMINI_2_5_PRO,
+    // FIX: Removed extra brackets around Model.GEMINI_2_5_FLASH to match the array type.
     Model.GEMINI_2_5_FLASH,
     Model.GEMINI_2_5_FLASH_LITE,
     Model.GEMINI_2_0_FLASH,
@@ -485,7 +716,8 @@ const App: React.FC = () => {
 
   const handleSendMessage = useCallback(async (prompt: string, attachments: Attachment[]) => {
     if ((!prompt.trim() && attachments.length === 0) || isLoading) return;
-
+    if (!activeChatId) return;
+    
     const isInterpreterRequest = isCodeInterpreterToggled;
     const isImageRequest = isImageToolActive;
     const isVideoRequest = isVideoToolActive;
@@ -494,54 +726,26 @@ const App: React.FC = () => {
         alert("Text-to-image models do not support file attachments. Please remove the attached files.");
         return;
     }
+    if (isImageRequest && isImageEditModel && attachments.length === 0) {
+        alert("Image editing models require a file attachment. Please attach an image to edit.");
+        return;
+    }
 
     setIsLoading(true);
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
-    
-    // reset full response text ref
-    fullResponseTextRef.current = '';
 
-    const isNewChat = activeChatId === null;
-    let currentChatId = isNewChat ? Date.now().toString() : activeChatId!;
-    let currentChat: ChatSession;
-    
-    const uiUserMessage: ChatMessage = { id: `msg-user-${Date.now()}`, role: Role.USER, content: prompt, attachments };
-    let placeholderContent = '';
-    if (isVideoRequest) {
-      placeholderContent = '🎬 **Generating your video...**\n\nThis process can take several minutes. Please wait while the model creates your content.';
-    }
-    const isThinkingActive = isThinkingModel && (isProModel || useThinking);
-    const placeholderModelMessage: ChatMessage = { id: `msg-model-${Date.now()}`, role: Role.MODEL, content: placeholderContent, reasoning: '', isThinking: isThinkingActive || isImageRequest || isVideoRequest, projectFilesUpdate: isInterpreterRequest };
-
-    if (isNewChat) {
-        const newTitle = prompt.substring(0, 40) + (prompt.length > 40 ? '...' : '');
-        currentChat = {
-            id: currentChatId,
-            title: newTitle,
-            messages: [uiUserMessage, placeholderModelMessage]
-        };
-        setChatHistory(prev => [currentChat, ...prev]);
-        setActiveChatId(currentChatId);
-    } else {
-        currentChat = chatHistory.find(c => c.id === activeChatId)!;
-        setChatHistory(prev => prev.map(chat =>
-            chat.id === currentChatId
-                ? { ...chat, messages: [...chat.messages, uiUserMessage, placeholderModelMessage] }
-                : chat
-        ));
-    }
-    
     const modelForApi = activeBaseModel || Model.GEMINI_2_5_FLASH;
     let systemInstructionForApi = systemInstruction;
     
+    let currentChat = chatHistory.find(c => c.id === activeChatId)!;
+    
     if (isInterpreterRequest) {
-        let projectForApi = chatHistory.find(c => c.id === currentChatId)?.project;
-        if (!projectForApi) {
+        if (!currentChat.project) {
             const newProject = createNewProject(`Project for: ${prompt.substring(0, 30)}...`);
             const updatedChat = { ...currentChat, project: newProject };
-            setChatHistory(prev => prev.map(c => c.id === currentChatId ? updatedChat : c));
-            projectForApi = newProject;
+            setChatHistory(prev => prev.map(c => c.id === activeChatId ? updatedChat : c));
+            currentChat = updatedChat;
         }
     }
     
@@ -552,7 +756,7 @@ const App: React.FC = () => {
         if (customModel) systemInstructionForApi = customModel.systemInstruction;
     } else if (isDeepResearchToggled && useUrlContext && urlContext) {
       apiUserMessage.content = `Using the content from the URL: ${urlContext}, answer the following question: ${prompt}`;
-    } else if (isInterpreterRequest) {
+    } else if (isInterpreterRequest && currentChat.project) {
         systemInstructionForApi = `You are an expert full-stack developer. Your task is to respond to the user's request by providing updated code files.
 
 **RESPONSE FORMAT:**
@@ -581,12 +785,28 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 5.  **EXPLANATION:** The \`explanation\` field should be a clear, user-friendly description of what you did.`;
     }
 
-    const messagesForApi: ChatMessage[] = [...(currentChat.messages.slice(0, -2)), apiUserMessage];
+    const currentMessages = currentChat.messages || [];
+    const newMessagesForApi: ChatMessage[] = [...currentMessages, apiUserMessage];
     
+    const isThinkingActive = isThinkingModel && (isProModel || useThinking);
+    const uiUserMessage: ChatMessage = { id: `msg-user-${Date.now()}`, role: Role.USER, content: prompt, attachments };
+
+    let placeholderContent = '';
+    if (isVideoRequest) {
+      placeholderContent = '🎬 **Generating your video...**\n\nThis process can take several minutes. Please wait while the model creates your content.';
+    }
+
+    const placeholderModelMessage: ChatMessage = { id: `msg-model-${Date.now()}`, role: Role.MODEL, content: placeholderContent, reasoning: '', isThinking: isThinkingActive || isImageRequest || isVideoRequest, projectFilesUpdate: isInterpreterRequest };
+
+    const isFirstUserMessage = currentMessages.length === 0;
+    const newTitle = isFirstUserMessage ? prompt.substring(0, 40) + (prompt.length > 40 ? '...' : '') : currentChat.title;
+    setChatHistory(prev => prev.map(chat => chat.id === activeChatId ? { ...chat, title: newTitle, messages: [...chat.messages, uiUserMessage, placeholderModelMessage] } : chat));
+
+    let fullResponseText = '';
     let groundingChunks: any[] = [];
     let finalParts: any[] = [];
     let fullResponse: GenerateContentResponse | null = null;
-    
+
 
     try {
         if (isImageRequest && isTextToImageModel) {
@@ -625,42 +845,29 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 
             const options = { systemInstruction: finalSystemInstruction, config };
             
-            setChatHistory(prev => prev.map(chat => {
-                if (chat.id === currentChatId) {
-                    const updatedMessages = [...chat.messages.slice(0, -1)];
-                    updatedMessages.push({ ...placeholderModelMessage, content: '' });
-                    return { ...chat, messages: updatedMessages };
+            await generateChatResponse(newMessagesForApi, modelForApi as Model, options, (chunk: GenerateContentResponse) => {
+                fullResponse = chunk; // In non-streaming, this is the only chunk.
+                if (chunk.candidates?.[0]?.content?.parts) {
+                    finalParts = chunk.candidates[0].content.parts;
                 }
-                return chat;
-            }));
 
-            await generateChatResponse(messagesForApi, modelForApi as Model, options, (chunk: GenerateContentResponse) => {
-                const chunkText = chunk.text;
-                if (chunkText) {
-                    fullResponseTextRef.current += chunkText;
-                    setChatHistory(prev => prev.map(chat => {
-                        if (chat.id === currentChatId) {
-                            const lastMsg = chat.messages[chat.messages.length - 1];
-                            if (lastMsg && lastMsg.role === Role.MODEL) {
-                                return { 
-                                    ...chat, 
-                                    messages: [
-                                        ...chat.messages.slice(0, -1),
-                                        { ...lastMsg, content: fullResponseTextRef.current }
-                                    ]
-                                };
-                            }
-                        }
-                        return chat;
-                    }));
-                }
+                let chunkText = chunk.text;
+                fullResponseText += chunkText;
                 
                 const newChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
                 if (newChunks) {
                     groundingChunks.push(...newChunks);
                 }
                 
-                fullResponse = chunk;
+                if (!isInterpreterRequest && !isImageEditModel && !isTextToImageModel && !isVideoModel) {
+                    const updater = (prevSession: ChatSession): ChatSession => {
+                        let lastMessage = prevSession.messages[prevSession.messages.length - 1];
+                        if (!lastMessage || lastMessage.role !== Role.MODEL) return prevSession;
+                        let updatedMessage = { ...lastMessage, content: fullResponseText };
+                        return { ...prevSession, messages: [...prevSession.messages.slice(0, -1), updatedMessage] };
+                    };
+                    setChatHistory(prev => prev.map(chat => chat.id === activeChatId ? updater(chat) : chat));
+                }
             }, signal);
         }
     } catch (error) {
@@ -674,7 +881,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             if (lastMessage?.role === Role.MODEL) return { ...prev, messages: [...prev.messages.slice(0, -1), { ...lastMessage, content: 'Sorry, I encountered an error. Please try again.', isThinking: false }] };
             return prev;
         }
-        setChatHistory(prev => prev.map(c => c.id === currentChatId ? errorUpdater(c) : c));
+        setChatHistory(prev => prev.map(c => c.id === activeChatId ? errorUpdater(c) : c));
 
     } finally {
         setIsLoading(false);
@@ -682,15 +889,14 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             return; 
         }
 
-      const fullResponseText = fullResponseTextRef.current;
-      if (fullResponse) {
-        finalParts = fullResponse.candidates?.[0]?.content?.parts || finalParts;
-        if (isImageRequest || isVideoRequest) {
-          // No need to use fullResponseText here for image/video
+        if (fullResponse) {
+            finalParts = fullResponse.candidates?.[0]?.content?.parts || finalParts;
+            if (isImageRequest || isVideoRequest) {
+                fullResponseText = fullResponse.text || fullResponseText;
+            }
         }
-      }
-      
-      const finalUpdater = (prev: ChatSession): ChatSession => {
+
+        const finalUpdater = (prev: ChatSession): ChatSession => {
             const lastMsg = prev.messages[prev.messages.length - 1];
             if (lastMsg?.role === Role.MODEL) {
               
@@ -714,7 +920,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
                             finalAttachments.push(attachment);
                         }
                     });
-                } else if (fullResponseText) {
+                } else if (fullResponseText) { // Fallback if parts aren't there but text is
                     finalContent = fullResponseText;
                 }
                 
@@ -786,7 +992,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             }
             return prev;
         }
-        setChatHistory(prev => prev.map(c => c.id === currentChatId ? finalUpdater(c) : c));
+        setChatHistory(prev => prev.map(c => c.id === activeChatId ? finalUpdater(c) : c));
     }
   }, [isLoading, activeChatId, chatHistory, activeBaseModel, systemInstruction, selectedModel, tunedModels, isDeepResearchToggled, useUrlContext, urlContext, temperature, topP, maxOutputTokens, stopSequence, isThinkingModel, isProModel, useThinking, useThinkingBudget, thinkingBudget, useStructuredOutput, structuredOutputSchema, useCodeExecution, useFunctionCalling, functionDeclarations, isMobile, isCodeInterpreterToggled, isImageToolActive, isVideoToolActive, isTextToImageModel, isImageEditModel, isVideoModel, numberOfImages, negativePrompt, seed, aspectRatio, personGeneration]);
 
@@ -816,10 +1022,14 @@ You **MUST** respond with a single JSON object that conforms to this schema:
   }, [activeChatId, isMobile]);
 
   const handleSelectChat = useCallback((id: string) => {
+    const currentActiveChat = chatHistory.find(chat => chat.id === activeChatId);
+    if (currentActiveChat && currentActiveChat.messages.length === 0 && currentActiveChat.id !== id) {
+        setChatHistory(prev => prev.filter(chat => chat.id !== activeChatId));
+    }
     setActiveChatId(id);
-    setIsCodePanelVisible(false);
+    setIsCodePanelVisible(false); // Close panel when switching chats
     if(isMobile) setIsNavSidebarOpen(false);
-  }, [isMobile]);
+  }, [activeChatId, chatHistory, isMobile]);
   
   const handleDeleteChat = useCallback((idToDelete: string) => setChatToDelete(idToDelete), []);
   
@@ -828,12 +1038,13 @@ You **MUST** respond with a single JSON object that conforms to this schema:
     setChatHistory(prevHistory => {
         const newHistory = prevHistory.filter(chat => chat.id !== chatToDelete);
         if (activeChatId === chatToDelete) {
-            setActiveChatId(null);
+            setActiveChatId(newHistory.length > 0 ? newHistory[0].id : null);
+            if (newHistory.length === 0) handleNewChat();
         }
         return newHistory;
     });
     setChatToDelete(null);
-  }, [chatToDelete, activeChatId]);
+  }, [chatToDelete, activeChatId, handleNewChat]);
   
   const handleRenameChat = useCallback((id: string, newTitle: string) => {
       setChatHistory(prev => prev.map(chat => chat.id === id ? { ...chat, title: newTitle.trim() || 'Untitled Chat' } : chat));
@@ -951,9 +1162,10 @@ You **MUST** respond with a single JSON object that conforms to this schema:
   const confirmClearHistory = useCallback(() => {
     setChatHistory([]);
     setActiveChatId(null);
+    handleNewChat();
     setIsClearHistoryModalOpen(false);
     setIsSettingsModalOpen(false);
-  }, []);
+  }, [handleNewChat]);
 
   const closeAllSidebars = () => { setIsNavSidebarOpen(false); openRightPanel('none'); };
   const openSchemaModal = () => { setTempSchema(structuredOutputSchema || placeholderSchema); setIsSchemaModalOpen(true); };
@@ -984,95 +1196,78 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 
             <div className="flex-1 flex min-h-0">
                 <main className={`flex flex-col min-w-0 bg-white dark:bg-gray-950 md:border border-gray-200 dark:border-gray-700 md:rounded-lg overflow-hidden transition-all duration-300 ease-in-out ${isCodePanelVisible ? (isWidePreview ? 'hidden' : 'flex-1') : 'w-full'}`}>
-                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">Loading Chat...</div>}>
-                        <ChatArea
-                            messages={messages}
-                            onSendMessage={handleSendMessage}
-                            isLoading={isLoading}
-                            onStopGeneration={handleStopGeneration}
-                            isCodeInterpreterActive={isCodeInterpreterToggled}
-                            onToggleCodeInterpreter={handleToggleCodeInterpreter}
-                            isDeepResearchActive={isDeepResearchToggled}
-                            onToggleDeepResearch={handleToggleDeepResearch}
-                            isImageToolActive={isImageToolActive}
-                            onToggleImageTool={handleToggleImageTool}
-                            isVideoToolActive={isVideoToolActive}
-                            onToggleVideoTool={handleToggleVideoTool}
-                            onOpenProjectVersion={handleOpenProjectVersion}
-                            isTextToImageModel={isTextToImageModel}
-                            isImageEditModel={isImageEditModel}
-                            isVideoModel={isVideoModel}
-                            isMobile={isMobile}
-                            onStartLiveConversation={() => setIsLiveConversationOpen(true)}
-                        />
-                    </React.Suspense>
+                    <ChatArea
+                        messages={messages}
+                        onSendMessage={handleSendMessage}
+                        isLoading={isLoading}
+                        onStopGeneration={handleStopGeneration}
+                        isCodeInterpreterActive={isCodeInterpreterToggled}
+                        onToggleCodeInterpreter={handleToggleCodeInterpreter}
+                        isDeepResearchActive={isDeepResearchToggled}
+                        onToggleDeepResearch={handleToggleDeepResearch}
+                        isImageToolActive={isImageToolActive}
+                        onToggleImageTool={handleToggleImageTool}
+                        isVideoToolActive={isVideoToolActive}
+                        onToggleVideoTool={handleToggleVideoTool}
+                        onOpenProjectVersion={handleOpenProjectVersion}
+                        isTextToImageModel={isTextToImageModel}
+                        isImageEditModel={isImageEditModel}
+                        isVideoModel={isVideoModel}
+                        isMobile={isMobile}
+                        onStartLiveConversation={() => setIsLiveConversationOpen(true)}
+                    />
                 </main>
                 
                 {isCodePanelVisible && (
                      <div className={`flex-shrink-0 overflow-hidden ml-2 transition-all duration-300 ease-in-out ${isWidePreview ? 'flex-1' : 'w-[800px]'}`} style={{ display: isMobile ? 'none' : 'flex' }}>
-                        <React.Suspense fallback={<div className="flex items-center justify-center h-full w-full text-gray-500 dark:text-gray-400">Loading Code Interpreter...</div>}>
-                            <CodeInterpreterPanel
-                                isMobile={isMobile}
-                                isDarkMode={false}
-                                project={activeProject}
-                                onProjectChange={handleProjectChange}
-                                onClose={() => {
-                                    setIsCodePanelVisible(false);
-                                    setIsWidePreview(false);
-                                }}
-                                activeFilePath={activeInterpreterFile}
-                                streamingTarget={streamingTarget}
-                                onStreamComplete={handleStreamComplete}
-                                isWidePreview={isWidePreview}
-                                onToggleWidePreview={() => setIsWidePreview(p => !p)}
-                            />
-                        </React.Suspense>
+                        <CodeInterpreterPanel
+                            isMobile={isMobile}
+                            isDarkMode={false}
+                            project={activeProject}
+                            onProjectChange={handleProjectChange}
+                            onClose={() => {
+                                setIsCodePanelVisible(false);
+                                setIsWidePreview(false);
+                            }}
+                            activeFilePath={activeInterpreterFile}
+                            streamingTarget={streamingTarget}
+                            onStreamComplete={handleStreamComplete}
+                            isWidePreview={isWidePreview}
+                            onToggleWidePreview={() => setIsWidePreview(p => !p)}
+                        />
                     </div>
                 )}
 
-                <React.Suspense fallback={<div className="flex-shrink-0 w-80 p-4">Loading Sidebar...</div>}>
-                    <Sidebar
-                        selectedModel={selectedModel} setSelectedModel={setSelectedModel} isSidebarOpen={isRightSidebarOpen} modelOptions={combinedModelOptions} systemInstruction={systemInstruction} setSystemInstruction={setSystemInstruction} temperature={temperature} setTemperature={setTemperature} topP={topP} setTopP={setTopP} maxOutputTokens={maxOutputTokens} setMaxOutputTokens={setMaxOutputTokens} stopSequence={stopSequence} setStopSequence={setStopSequence} tokenCount={tokenCount} modelMaxTokens={modelMaxTokensForSidebar} mediaResolution={mediaResolution} setMediaResolution={setMediaResolution} useThinking={useThinking} setUseThinking={setUseThinking} useThinkingBudget={useThinkingBudget} setUseThinkingBudget={setUseThinkingBudget} thinkingBudget={thinkingBudget} setThinkingBudget={setThinkingBudget} useStructuredOutput={useStructuredOutput} setUseStructuredOutput={toggleStructuredOutput} openSchemaModal={openSchemaModal} useCodeExecution={useCodeExecution} setUseCodeExecution={setUseCodeExecution} useFunctionCalling={useFunctionCalling} setUseFunctionCalling={setUseFunctionCalling} openFunctionModal={openFunctionModal} useGoogleSearch={isDeepResearchToggled || useGoogleSearch} setUseGoogleSearch={toggleGoogleSearch} useUrlContext={useUrlContext} setUseUrlContext={setUseUrlContext} urlContext={urlContext} setUrlContext={setUrlContext} isMobile={isMobile} isGemmaModel={isGemmaModel} isImageEditModel={isImageEditModel} isTextToImageModel={isTextToImageModel} isVideoModel={isVideoModel} isThinkingModel={isThinkingModel} isProModel={isProModel}
-                        numberOfImages={numberOfImages} setNumberOfImages={setNumberOfImages}
-                        negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
-                        seed={seed} setSeed={setSeed}
-                        aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
-                        personGeneration={personGeneration} setPersonGeneration={setPersonGeneration}
-                    />
-                </React.Suspense>
-
-                <React.Suspense fallback={<div className="flex-shrink-0 w-80 p-4">Loading Files Sidebar...</div>}>
-                    <FilesSidebar isSidebarOpen={isFilesSidebarOpen} messages={messages} onDeleteAttachment={handleDeleteAttachment} tunedModels={tunedModels} onStartTuning={handleStartTuning} onUpdateTuning={handleUpdateTuning} onDeleteTunedModel={handleDeleteTunedModel} modelOptions={modelOptions} isMobile={isMobile} />
-                </React.Suspense>
+                <Sidebar
+                    selectedModel={selectedModel} setSelectedModel={setSelectedModel} isSidebarOpen={isRightSidebarOpen} modelOptions={combinedModelOptions} systemInstruction={systemInstruction} setSystemInstruction={setSystemInstruction} temperature={temperature} setTemperature={setTemperature} topP={topP} setTopP={setTopP} maxOutputTokens={maxOutputTokens} setMaxOutputTokens={setMaxOutputTokens} stopSequence={stopSequence} setStopSequence={setStopSequence} tokenCount={tokenCount} modelMaxTokens={modelMaxTokensForSidebar} mediaResolution={mediaResolution} setMediaResolution={setMediaResolution} useThinking={useThinking} setUseThinking={setUseThinking} useThinkingBudget={useThinkingBudget} setUseThinkingBudget={setUseThinkingBudget} thinkingBudget={thinkingBudget} setThinkingBudget={setThinkingBudget} useStructuredOutput={useStructuredOutput} setUseStructuredOutput={toggleStructuredOutput} openSchemaModal={openSchemaModal} useCodeExecution={useCodeExecution} setUseCodeExecution={setUseCodeExecution} useFunctionCalling={useFunctionCalling} setUseFunctionCalling={setUseFunctionCalling} openFunctionModal={openFunctionModal} useGoogleSearch={isDeepResearchToggled || useGoogleSearch} setUseGoogleSearch={toggleGoogleSearch} useUrlContext={useUrlContext} setUseUrlContext={setUseUrlContext} urlContext={urlContext} setUrlContext={setUrlContext} isMobile={isMobile} isGemmaModel={isGemmaModel} isImageEditModel={isImageEditModel} isTextToImageModel={isTextToImageModel} isVideoModel={isVideoModel} isThinkingModel={isThinkingModel} isProModel={isProModel}
+                    numberOfImages={numberOfImages} setNumberOfImages={setNumberOfImages}
+                    negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
+                    seed={seed} setSeed={setSeed}
+                    aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
+                    personGeneration={personGeneration} setPersonGeneration={setPersonGeneration}
+                />
+                <FilesSidebar isSidebarOpen={isFilesSidebarOpen} messages={messages} onDeleteAttachment={handleDeleteAttachment} tunedModels={tunedModels} onStartTuning={handleStartTuning} onUpdateTuning={handleUpdateTuning} onDeleteTunedModel={handleDeleteTunedModel} modelOptions={modelOptions} isMobile={isMobile} />
             </div>
         </div>
-
-        <Modal isOpen={isSchemaModalOpen} onClose={() => setIsSchemaModalOpen(false)} onSave={saveSchema} title="Edit Structured Output Schema" content={tempSchema} setContent={setTempSchema} placeholder={placeholderSchema} helpText={<>Define the JSON schema for the model's output... See the <a href="https://ai.google.dev/docs/tool_library" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">documentation</a> for the correct format.</>} />
+        <Modal isOpen={isSchemaModalOpen} onClose={() => setIsSchemaModalOpen(false)} onSave={saveSchema} title="Edit Structured Output Schema" content={tempSchema} setContent={setTempSchema} placeholder={placeholderSchema} helpText="Define the JSON schema for the model's output..." />
         <Modal isOpen={isFunctionModalOpen} onClose={() => setIsFunctionModalOpen(false)} onSave={saveDeclarations} title="Edit Function Declarations" content={tempDeclarations} setContent={setTempDeclarations} placeholder={placeholderDeclarations} helpText={<>Define functions the model can call. See the <a href="https://ai.google.dev/docs/function_calling" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">documentation</a> for the correct format.</>} />
         <ConfirmationModal isOpen={!!chatToDelete} onClose={() => setChatToDelete(null)} onConfirm={confirmDeleteChat} title="Delete Chat">Are you sure you want to delete this chat? This action cannot be undone.</ConfirmationModal>
-        
-        <React.Suspense fallback={null}>
-            <LiveConversation 
-                isOpen={isLiveConversationOpen} 
-                onClose={() => setIsLiveConversationOpen(false)}
-                appTheme={effectiveTheme}
-                model={liveConversationModel}
-            />
-        </React.Suspense>
-
-        <React.Suspense fallback={null}>
-            <SettingsModal 
-                isOpen={isSettingsModalOpen}
-                onClose={() => setIsSettingsModalOpen(false)}
-                theme={theme}
-                setTheme={setTheme}
-                onExportHistory={handleExportHistory}
-                onClearHistory={() => setIsClearHistoryModalOpen(true)}
-                liveConversationModel={liveConversationModel}
-                setLiveConversationModel={setLiveConversationModel}
-            />
-        </React.Suspense>
-        
+        <LiveConversation 
+            isOpen={isLiveConversationOpen} 
+            onClose={() => setIsLiveConversationOpen(false)}
+            appTheme={effectiveTheme}
+            model={liveConversationModel}
+        />
+        <SettingsModal 
+            isOpen={isSettingsModalOpen}
+            onClose={() => setIsSettingsModalOpen(false)}
+            theme={theme}
+            setTheme={setTheme}
+            onExportHistory={handleExportHistory}
+            onClearHistory={() => setIsClearHistoryModalOpen(true)}
+            liveConversationModel={liveConversationModel}
+            setLiveConversationModel={setLiveConversationModel}
+        />
         <ConfirmationModal
             isOpen={isClearHistoryModalOpen}
             onClose={() => setIsClearHistoryModalOpen(false)}

@@ -3,6 +3,7 @@ import { GoogleGenAI, Session, LiveServerMessage, Modality } from '@google/genai
 import { Mic, Pause, Play, X, Video, VideoOff, ScreenShare, ScreenShareOff, SwitchCamera } from 'lucide-react';
 import { createBlob, decode, decodeAudioData } from '../lib/audioUtils';
 import { AudioVisualizer } from './AudioVisualizer';
+import { LiveConversationModel } from '../types';
 
 const API_KEY = import.meta.env.VITE_API_KEY;
 
@@ -10,6 +11,7 @@ interface LiveConversationProps {
   isOpen: boolean;
   onClose: () => void;
   appTheme: 'light' | 'dark';
+  model: LiveConversationModel;
 }
 
 const useMediaQuery = (query: string) => {
@@ -26,7 +28,7 @@ const useMediaQuery = (query: string) => {
 };
 
 
-export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onClose, appTheme }) => {
+export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onClose, appTheme, model }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [status, setStatus] = useState('Initializing...');
@@ -175,7 +177,7 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
     const outputNode = outputNodeRef.current;
     try {
       const session = await clientRef.current.live.connect({
-        model: 'gemini-2.5-flash-preview-native-audio-dialog',
+        model: model,
         callbacks: {
           onopen: () => setStatus('Session Opened'),
           onmessage: async (message: LiveServerMessage) => {
@@ -230,7 +232,7 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
       console.error('Error initializing session:', e);
       setError(`Error initializing session: ${e.message || e}`);
     }
-  }, []);
+  }, [model]);
 
   useEffect(() => {
     let isMounted = true;

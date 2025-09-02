@@ -19,13 +19,6 @@ export enum Model {
   GEMMA_3_27B = 'gemma-3-27b-it',
 }
 
-export enum LiveConversationModel {
-  FLASH_2_5_LIVE = 'gemini-live-2.5-flash-preview',
-  FLASH_2_5_NATIVE_AUDIO = 'gemini-2.5-flash-preview-native-audio-dialog',
-  FLASH_2_5_NATIVE_AUDIO_THINKING = 'gemini-2.5-flash-exp-native-audio-thinking-dialog',
-  FLASH_2_0_LIVE = 'gemini-2.0-flash-live-001',
-}
-
 export enum Role {
   USER = 'user',
   MODEL = 'model',
@@ -70,6 +63,10 @@ export enum TuningStatus {
   FAILED = 'FAILED',
 }
 
+export enum LiveConversationModel {
+  GEMINI_2_5_FLASH_NATIVE_AUDIO = 'gemini-2.5-flash-preview-native-audio-dialog',
+}
+
 export interface TrainingFile {
   name: string;
   mimeType: string;
@@ -108,7 +105,7 @@ export const initialFiles: { [key: string]: FileSystemNode } = {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale-1.0">
   <title>AI Project Preview</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>

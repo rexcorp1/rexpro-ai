@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Sun, Moon, Monitor, User, Key, Database, Info, Trash2, Download } from 'lucide-react';
+import { Sun, Moon, Monitor, User, Key, Database, Info, Trash2, Download, ChevronDown } from 'lucide-react';
 import { LiveConversationModel } from '../types';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -49,13 +49,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
       </div>
     </button>
   );
-  
-  const liveModelOptions = [
-    { value: LiveConversationModel.FLASH_2_5_LIVE, label: '2.5 Flash Live' },
-    { value: LiveConversationModel.FLASH_2_5_NATIVE_AUDIO, label: '2.5 Native Audio' },
-    { value: LiveConversationModel.FLASH_2_5_NATIVE_AUDIO_THINKING, label: '2.5 Native Audio Thinking' },
-    { value: LiveConversationModel.FLASH_2_0_LIVE, label: '2.0 Flash Live' },
-  ];
 
   return (
     <div
@@ -97,21 +90,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                       <ThemeButton value="system" label="System" Icon={Monitor} />
                     </div>
                   </div>
-                   <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <label htmlFor="live-model-select" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Live Conversation Model</label>
-                    <select
-                      id="live-model-select"
-                      value={liveConversationModel}
-                      onChange={(e) => setLiveConversationModel(e.target.value as LiveConversationModel)}
-                      className="w-full p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-950"
-                    >
-                      {liveModelOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      Select the model to use for real-time voice conversations. Different models may have varying latency and capabilities.
-                    </p>
+                   <div>
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Voice Model</label>
+                    <div className="relative">
+                      <select
+                        value={liveConversationModel}
+                        onChange={(e) => setLiveConversationModel(e.target.value as LiveConversationModel)}
+                        className="w-full p-2.5 pr-8 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-700 appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value={LiveConversationModel.GEMINI_2_5_FLASH_NATIVE_AUDIO}>
+                          Gemini 2.5 Flash (Native Audio)
+                        </option>
+                      </select>
+                      <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
               </div>
