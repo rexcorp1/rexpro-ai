@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Role, Attachment, Project } from '../types';
 import { ArrowUp, Copy, Check, Paperclip, X, ChevronDown, SquareCode, Settings2, Microscope, Image, Video, Square, AudioLines, Mic, Download, Loader2 } from 'lucide-react';
@@ -34,6 +30,7 @@ interface ChatAreaProps {
   isVideoModel: boolean;
   isMobile: boolean;
   onStartLiveConversation: () => void;
+  isAttachmentDisabled: boolean;
 }
 
 const LoadingDots: React.FC = () => (
@@ -345,6 +342,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   isVideoModel,
   isMobile,
   onStartLiveConversation,
+  isAttachmentDisabled,
 }) => {
   const [input, setInput] = useState('');
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
@@ -441,7 +439,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const handleDragEnter = (e: React.DragEvent<HTMLFormElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isTextToImageModel) return;
+    if (isTextToImageModel || isAttachmentDisabled) return;
     dragCounter.current++;
     if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
         setIsDragging(true);
@@ -465,7 +463,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const handleDrop = (e: React.DragEvent<HTMLFormElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isTextToImageModel) return;
+    if (isTextToImageModel || isAttachmentDisabled) return;
     setIsDragging(false);
     dragCounter.current = 0;
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
@@ -579,7 +577,9 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       ? (attachedFiles.length > 0 ? "Describe the edits you want to make..." : "Attach an image to edit...")
       : isVideoModel 
         ? "Describe the video you want to create..."
-        : "Type your message here, or attach files...";
+        : isAttachmentDisabled
+          ? "Type your message here..."
+          : "Type your message here, or attach files...";
 
 
   const renderMicOrSendButton = () => {
@@ -773,7 +773,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         data-tooltip-position="top" 
                         className="text-gray-400 hover:text-gray-600 p-2 rounded-lg hover:bg-gray-100 transition-colors dark:text-gray-500 dark:hover:text-gray-400 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed" 
                         aria-label="Attach files"
-                        disabled={isTextToImageModel}
+                        disabled={isTextToImageModel || isAttachmentDisabled}
                       >
                           <Paperclip className="h-5 w-5" />
                       </button>

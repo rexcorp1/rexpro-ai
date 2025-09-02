@@ -639,6 +639,15 @@ const App: React.FC = () => {
   const isVideoModel = useMemo(() => activeBaseModel === Model.VEO_2_0_GENERATE_001, [activeBaseModel]);
   const isThinkingModel = useMemo(() => activeBaseModel ? [Model.GEMINI_2_5_PRO, Model.GEMINI_2_5_FLASH, Model.GEMINI_2_5_FLASH_LITE].includes(activeBaseModel) : false, [activeBaseModel]);
   const isProModel = useMemo(() => activeBaseModel === Model.GEMINI_2_5_PRO, [activeBaseModel]);
+  const isAttachmentDisabled = useMemo(() => {
+    if (!activeBaseModel) return false;
+    const disabledModels = [
+        Model.GEMMA_3N_E2B,
+        Model.GEMMA_3N_E4B,
+        Model.GEMMA_3_1B,
+    ];
+    return disabledModels.includes(activeBaseModel as Model);
+  }, [activeBaseModel]);
     
   useEffect(() => {
     const calculateTokens = async () => {
@@ -818,7 +827,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             const tools = [];
             if (isDeepResearchToggled) {
                 tools.push({ googleSearch: {} });
-            } else {
+            } else if (!isGemmaModel) {
                 if (useCodeExecution && !isInterpreterRequest) tools.push({ codeExecution: {} });
                 if (useFunctionCalling && functionDeclarations) try { tools.push({ functionDeclarations: JSON.parse(functionDeclarations) }); } catch (e) { console.error("Invalid function declarations JSON:", e); }
             }
@@ -994,7 +1003,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
         }
         setChatHistory(prev => prev.map(c => c.id === activeChatId ? finalUpdater(c) : c));
     }
-  }, [isLoading, activeChatId, chatHistory, activeBaseModel, systemInstruction, selectedModel, tunedModels, isDeepResearchToggled, useUrlContext, urlContext, temperature, topP, maxOutputTokens, stopSequence, isThinkingModel, isProModel, useThinking, useThinkingBudget, thinkingBudget, useStructuredOutput, structuredOutputSchema, useCodeExecution, useFunctionCalling, functionDeclarations, isMobile, isCodeInterpreterToggled, isImageToolActive, isVideoToolActive, isTextToImageModel, isImageEditModel, isVideoModel, numberOfImages, negativePrompt, seed, aspectRatio, personGeneration]);
+  }, [isLoading, activeChatId, chatHistory, activeBaseModel, systemInstruction, selectedModel, tunedModels, isDeepResearchToggled, useUrlContext, urlContext, temperature, topP, maxOutputTokens, stopSequence, isThinkingModel, isProModel, useThinking, useThinkingBudget, thinkingBudget, useStructuredOutput, structuredOutputSchema, useCodeExecution, useFunctionCalling, functionDeclarations, isMobile, isCodeInterpreterToggled, isImageToolActive, isVideoToolActive, isTextToImageModel, isImageEditModel, isVideoModel, numberOfImages, negativePrompt, seed, aspectRatio, personGeneration, isGemmaModel]);
 
   const handleStreamComplete = useCallback(() => {
     if (pendingProjectUpdate) {
@@ -1215,6 +1224,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
                         isVideoModel={isVideoModel}
                         isMobile={isMobile}
                         onStartLiveConversation={() => setIsLiveConversationOpen(true)}
+                        isAttachmentDisabled={isAttachmentDisabled}
                     />
                 </main>
                 

@@ -525,56 +525,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        <CollapsibleSection title="Tools">
-          <ToggleSwitch 
-              label="Structured output" 
-              enabled={useStructuredOutput}
-              onToggle={setUseStructuredOutput}
-              disabled={useGoogleSearch}
-              description={
-                  <>
-                      <button onClick={openSchemaModal} className="text-xs text-blue-600 dark:text-blue-500 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed" disabled={!useStructuredOutput}>Edit</button>
-                      {useGoogleSearch && <span className="text-xs text-gray-500 ml-2">(Unavailable with Google Search)</span>}
-                  </>
-              }
-          />
-          <ToggleSwitch label="Code execution" enabled={useCodeExecution} onToggle={setUseCodeExecution} />
-          <ToggleSwitch 
-              label="Function calling"
-              enabled={useFunctionCalling}
-              onToggle={setUseFunctionCalling}
-              description={<button onClick={openFunctionModal} className="text-xs text-blue-600 dark:text-blue-500 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed" disabled={!useFunctionCalling}>Edit</button>}
-          />
-          <div>
-            <ToggleSwitch
-                label="Grounding with Google Search"
-                enabled={useGoogleSearch}
-                onToggle={setUseGoogleSearch}
-                description={<span className="inline-flex items-center">Source: <img src="https://www.google.com/favicon.ico" alt="Google icon" className="w-3 h-3 mx-1"/> Google Search</span>}
+        {!isGemmaModel && (
+          <CollapsibleSection title="Tools">
+            <ToggleSwitch 
+                label="Structured output" 
+                enabled={useStructuredOutput}
+                onToggle={setUseStructuredOutput}
+                disabled={useGoogleSearch}
+                description={
+                    <>
+                        <button onClick={openSchemaModal} className="text-xs text-blue-600 dark:text-blue-500 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed" disabled={!useStructuredOutput}>Edit</button>
+                        {useGoogleSearch && <span className="text-xs text-gray-500 ml-2">(Unavailable with Google Search)</span>}
+                    </>
+                }
             />
-            <div className="mt-4">
-              <ToggleSwitch 
-                  label="URL context"
-                  enabled={useUrlContext}
-                  onToggle={setUseUrlContext}
-                  disabled={!useGoogleSearch}
-                  description={!useGoogleSearch && <span className="text-xs text-gray-500">(Requires Google Search)</span>}
+            <ToggleSwitch label="Code execution" enabled={useCodeExecution} onToggle={setUseCodeExecution} />
+            <ToggleSwitch 
+                label="Function calling"
+                enabled={useFunctionCalling}
+                onToggle={setUseFunctionCalling}
+                description={<button onClick={openFunctionModal} className="text-xs text-blue-600 dark:text-blue-500 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed" disabled={!useFunctionCalling}>Edit</button>}
+            />
+            <div>
+              <ToggleSwitch
+                  label="Grounding with Google Search"
+                  enabled={useGoogleSearch}
+                  onToggle={setUseGoogleSearch}
+                  description={<span className="inline-flex items-center">Source: <img src="https://www.google.com/favicon.ico" alt="Google icon" className="w-3 h-3 mx-1"/> Google Search</span>}
               />
-              {useUrlContext && useGoogleSearch && (
-                  <div className="mt-2">
-                      <input
-                          type="url"
-                          value={urlContext}
-                          onChange={e => setUrlContext(e.target.value)}
-                          placeholder="https://example.com"
-                          className="w-full p-2 border border-gray-200 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 rounded-lg text-sm"
-                          aria-label="URL for context"
-                      />
-                  </div>
-              )}
+              <div className="mt-4">
+                <ToggleSwitch 
+                    label="URL context"
+                    enabled={useUrlContext}
+                    onToggle={setUseUrlContext}
+                    disabled={!useGoogleSearch}
+                    description={!useGoogleSearch && <span className="text-xs text-gray-500">(Requires Google Search)</span>}
+                />
+                {useUrlContext && useGoogleSearch && (
+                    <div className="mt-2">
+                        <input
+                            type="url"
+                            value={urlContext}
+                            onChange={e => setUrlContext(e.target.value)}
+                            placeholder="https://example.com"
+                            className="w-full p-2 border border-gray-200 dark:border-gray-700 dark:bg-gray-950 dark:text-gray-300 rounded-lg text-sm"
+                            aria-label="URL for context"
+                        />
+                    </div>
+                )}
+              </div>
             </div>
-          </div>
-        </CollapsibleSection>
+          </CollapsibleSection>
+        )}
 
         <CollapsibleSection title="Advanced settings">
             <div className="flex items-center justify-between text-sm">
@@ -616,7 +618,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside className={`
       bg-white dark:bg-gray-950 flex-shrink-0 overflow-hidden
       ${ isMobile
-        ? `fixed top-14 bottom-0 right-0 z-30 w-[320px] transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0 shadow-lg' : 'translate-x-full'}`
+        ? `fixed top-14 bottom-0 right-0 z-30 w-[320px] border-l border-gray-200 dark:border-gray-700 shadow-lg transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`
         : `border-gray-200 dark:border-gray-700 rounded-lg transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-[320px] border ml-4' : 'w-0 border-none'}`
       }
     `}>
