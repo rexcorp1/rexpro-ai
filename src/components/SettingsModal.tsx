@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Sun, Moon, Monitor, User, Key, Database, Info, Trash2, Download } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sun, Moon, Monitor, User, Key, Database, Info, Trash2, Download, ChevronDown } from 'lucide-react';
 import { LiveConversationModel } from '../types';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -14,6 +14,59 @@ interface SettingsModalProps {
   liveConversationModel: LiveConversationModel;
   setLiveConversationModel: (model: LiveConversationModel) => void;
 }
+
+const CustomDropdown: React.FC<{
+  label: string;
+  options: { value: string; label: string }[];
+  selectedValue: string;
+  onSelect: (value: string) => void;
+}> = ({ label, options, selectedValue, onSelect }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selectedLabel = options.find(opt => opt.value === selectedValue)?.label || selectedValue;
+
+  return (
+    <div className="relative" ref={dropdownRef}>
+      <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">{label}</label>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-2.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-left text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
+      >
+        <span className="truncate">{selectedLabel}</span>
+        <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+      {isOpen && (
+        <div className="absolute z-10 top-full mt-1 w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto hover-scrollbar" role="listbox">
+          {options.map(option => (
+            <div
+              key={option.value}
+              onClick={() => { onSelect(option.value); setIsOpen(false); }}
+              className="px-3 py-2 text-sm text-gray-800 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer truncate"
+              role="option"
+              aria-selected={option.value === selectedValue}
+            >
+              {option.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, theme, setTheme, onExportHistory, onClearHistory, liveConversationModel, setLiveConversationModel }) => {
   const [activeTab, setActiveTab] = useState('general');
@@ -50,11 +103,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
     </button>
   );
   
-  const liveModelOptions = [
-    { value: LiveConversationModel.FLASH_2_5_LIVE, label: '2.5 Flash Live' },
-    { value: LiveConversationModel.FLASH_2_5_NATIVE_AUDIO, label: '2.5 Native Audio' },
-    { value: LiveConversationModel.FLASH_2_5_NATIVE_AUDIO_THINKING, label: '2.5 Native Audio Thinking' },
-    { value: LiveConversationModel.FLASH_2_0_LIVE, label: '2.0 Flash Live' },
+  const liveConversationModelOptions = [
+    { value: LiveConversationModel.GEMINI_LIVE_2_5_FLASH_PREVIEW, label: 'Gemini Live 2.5 Flash Preview' },
+    { value: LiveConversationModel.GEMINI_2_5_FLASH_NATIVE_AUDIO, label: 'Gemini 2.5 Flash (Native Audio)' },
+    { value: LiveConversationModel.GEMINI_2_5_FLASH_EXP_NATIVE_AUDIO_THINKING, label: 'Gemini 2.5 Flash Exp (Native Audio, Thinking)' },
+    { value: LiveConversationModel.GEMINI_2_0_FLASH_LIVE_001, label: 'Gemini 2.0 Flash Live' },
   ];
 
   return (
@@ -97,22 +150,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, t
                       <ThemeButton value="system" label="System" Icon={Monitor} />
                     </div>
                   </div>
-                   <div className="pt-6 border-t border-gray-200 dark:border-gray-700">
-                    <label htmlFor="live-model-select" className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Live Conversation Model</label>
-                    <select
-                      id="live-model-select"
-                      value={liveConversationModel}
-                      onChange={(e) => setLiveConversationModel(e.target.value as LiveConversationModel)}
-                      className="w-full p-2.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-800 dark:text-gray-200 bg-white dark:bg-gray-950"
-                    >
-                      {liveModelOptions.map(opt => (
-                        <option key={opt.value} value={opt.value}>{opt.label}</option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                      Select the model to use for real-time voice conversations. Different models may have varying latency and capabilities.
-                    </p>
-                  </div>
+                   <CustomDropdown
+                      label="Voice Model"
+                      options={liveConversationModelOptions}
+                      selectedValue={liveConversationModel}
+                      onSelect={(val) => setLiveConversationModel(val as LiveConversationModel)}
+                    />
                 </div>
               </div>
             )}

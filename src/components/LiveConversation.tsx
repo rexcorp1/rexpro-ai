@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { GoogleGenAI, Session, LiveServerMessage, Modality } from '@google/genai';
-import { Mic, Pause, Play, X, Video, VideoOff, ScreenShare, ScreenShareOff } from 'lucide-react';
+import { Mic, Pause, Play, X, Video, VideoOff, ScreenShare, ScreenShareOff, SwitchCamera } from 'lucide-react';
 import { createBlob, decode, decodeAudioData } from '../lib/audioUtils';
 import { AudioVisualizer } from './AudioVisualizer';
 import { LiveConversationModel } from '../types';
@@ -14,6 +14,20 @@ interface LiveConversationProps {
   model: LiveConversationModel;
 }
 
+const useMediaQuery = (query: string) => {
+    const [matches, setMatches] = React.useState(() => window.matchMedia(query).matches);
+
+    React.useEffect(() => {
+        const mediaQuery = window.matchMedia(query);
+        const handler = (event: MediaQueryListEvent) => setMatches(event.matches);
+        mediaQuery.addEventListener('change', handler);
+        return () => mediaQuery.removeEventListener('change', handler);
+    }, [query]);
+
+    return matches;
+};
+
+
 export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onClose, appTheme, model }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
@@ -23,6 +37,7 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
   const [isCameraOn, setIsCameraOn] = useState(false);
   const [isScreenSharingOn, setIsScreenSharingOn] = useState(false);
   const [videoStream, setVideoStream] = useState<MediaStream | null>(null);
+  const [cameraFacingMode, setCameraFacingMode] = useState<'user' | 'environment'>('user');
 
   const clientRef = useRef<GoogleGenAI | null>(null);
   const sessionRef = useRef<Session | null>(null);
@@ -42,6 +57,8 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
   const processingStateRef = useRef({ isRecording: false, isPaused: false });
 
   const isLightTheme = appTheme === 'light';
+  const isMobile = useMediaQuery('(max-width: 767px)');
+
 
   useEffect(() => {
     processingStateRef.current = { isRecording, isPaused };
@@ -162,10 +179,11 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
       const session = await clientRef.current.live.connect({
         model: model,
         callbacks: {
-          onopen: () => setStatus('Session Opened'), onmessage: async (message: LiveServerMessage) => {
+          onopen: () => setStatus('Session Opened'),
+          onmessage: async (message: LiveServerMessage) => {
             const audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData;
             const outputCtx = outputAudioContextRef.current;
-            if (audio?.data && outputCtx) {
+            if (audio && audio.data && outputCtx) {
               try {
                 nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputCtx.currentTime);
                 const audioBuffer = await decodeAudioData(decode(audio.data), outputCtx, 24000, 1);
@@ -374,14 +392,26 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
     if (isCameraOn) {
       stopVideoStream();
     } else {
-      startVideoStream(() => navigator.mediaDevices.getUserMedia({ video: true }), 'camera');
+      startVideoStream(() => navigator.mediaDevices.getUserMedia({ video: { facingMode: cameraFacingMode } }), 'camera');
     }
-  }, [isCameraOn, stopVideoStream, startVideoStream]);
+  }, [isCameraOn, stopVideoStream, startVideoStream, cameraFacingMode]);
+
+  const handleSwitchCamera = useCallback(() => {
+      if (!isCameraOn) return;
+      const newFacingMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+      setCameraFacingMode(newFacingMode);
+      startVideoStream(
+          () => navigator.mediaDevices.getUserMedia({ video: { facingMode: newFacingMode } }),
+          'camera'
+      );
+  }, [isCameraOn, cameraFacingMode, startVideoStream]);
+
 
   const toggleScreenShare = useCallback(() => {
     if (isScreenSharingOn) {
       stopVideoStream();
     } else {
+      setCameraFacingMode('user');
       startVideoStream(() => navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always' } as any }), 'screen');
     }
   }, [isScreenSharingOn, stopVideoStream, startVideoStream]);
@@ -449,6 +479,17 @@ export const LiveConversation: React.FC<LiveConversationProps> = ({ isOpen, onCl
             >
                 {isCameraOn ? <VideoOff size={28} /> : <Video size={28} />}
             </button>
+             {isMobile && isCameraOn && (
+                <button
+                    onClick={handleSwitchCamera}
+                    className={`w-14 h-14 flex items-center justify-center rounded-full transition-colors ${themeClasses.buttonBg} ${themeClasses.buttonText}`}
+                    aria-label="Switch Camera"
+                    title="Switch Camera"
+                >
+                    {/* FIX: Replaced non-existent 'CameraReverse' icon with 'SwitchCamera'. */}
+                    <SwitchCamera size={28} />
+                </button>
+            )}
             <button
                 onClick={toggleScreenShare}
                 className={`w-14 h-14 flex items-center justify-center rounded-full transition-colors ${isScreenSharingOn ? `${themeClasses.buttonActiveBg} ${themeClasses.buttonActiveText}` : `${themeClasses.buttonBg} ${themeClasses.buttonText}`}`}

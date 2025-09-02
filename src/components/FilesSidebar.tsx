@@ -524,7 +524,7 @@ export const FilesSidebar: React.FC<FilesSidebarProps> = ({ isSidebarOpen, messa
     <aside className={`
       bg-white dark:bg-gray-950 flex-shrink-0 overflow-hidden
       ${ isMobile
-        ? `fixed top-14 bottom-0 right-0 z-30 w-[320px] transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0 shadow-lg' : 'translate-x-full'}`
+        ? `fixed top-14 bottom-0 right-0 z-30 w-[320px] border-l border-gray-200 dark:border-gray-700 shadow-lg transition-transform duration-300 ease-in-out ${isSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`
         : `border-gray-200 dark:border-gray-700 rounded-lg transition-all duration-300 ease-in-out ${isSidebarOpen ? 'w-[320px] border ml-4' : 'w-0 border-none'}`
       }
     `}>

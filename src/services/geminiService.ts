@@ -1,13 +1,9 @@
-/// <reference types="vite/client" />
-
 import { GoogleGenAI, GenerateContentParameters, Tool, GenerateContentResponse, Content } from "@google/genai";
 import { Model, ChatMessage, Attachment } from '../types';
 
 const API_KEY = import.meta.env.VITE_API_KEY;
 
 if (!API_KEY) {
-  // FIX: Updated error message to comply with coding guidelines.
-  // The application should not instruct the user on how to set the API key.
   throw new Error("API_KEY environment variable not set.");
 }
 
@@ -26,6 +22,8 @@ interface GenerateOptions {
     tools?: Tool[];
     responseModalities?: ('IMAGE' | 'TEXT')[];
     thinkingConfig?: { thinkingBudget: number };
+    // FIX: Add systemInstruction to the config object's type to allow assignment.
+    systemInstruction?: string;
   };
 }
 
@@ -101,13 +99,14 @@ export async function generateImage(
         const requestConfig: any = {
             numberOfImages: config.numberOfImages,
             negativePrompt: config.negativePrompt || undefined,
-            seed: config.seed,
             aspectRatio: config.aspectRatio,
             personGeneration: config.personGeneration,
             outputMimeType: 'image/png',
         };
 
-        Object.keys(requestConfig).forEach(key => requestConfig[key] === undefined && delete requestConfig[key]);
+        if (config.seed !== undefined) {
+            requestConfig.seed = config.seed;
+        }
 
         const response = await ai.models.generateImages({
             model: modelName,
@@ -119,12 +118,17 @@ export async function generateImage(
             throw new DOMException('Aborted by user', 'AbortError');
         }
         
-        const imageParts = (response.generatedImages || []).map(img => ({
-            inlineData: {
-                mimeType: 'image/png',
-                data: img.image?.imageBytes || '',
-            },
-        }));
+        const imageParts = response.generatedImages?.map(img => {
+            if (img.image?.imageBytes) {
+                return {
+                    inlineData: {
+                        mimeType: 'image/png',
+                        data: img.image.imageBytes,
+                    },
+                };
+            }
+            return null;
+        }).filter((p): p is NonNullable<typeof p> => p !== null) || [];
 
         return {
             text: '', // No text from this API
@@ -150,7 +154,7 @@ export async function generateImage(
 export async function generateVideo(
   prompt: string,
   attachments: Attachment[],
-  modelName: Model.VEO_2_0_GENERATE_001,
+  modelName: Model.VEO_2_0_GENERATE_001 | Model.VEO_3_0_GENERATE_PREVIEW | Model.VEO_3_0_FAST_GENERATE_PREVIEW,
   signal: AbortSignal
 ): Promise<GenerateContentResponse> {
     try {
@@ -232,6 +236,32 @@ export async function generateVideo(
     }
 }
 
+export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<string> {
+    try {
+        const audioPart = {
+            inlineData: {
+              mimeType,
+              data: audioBase64,
+            },
+        };
+
+        const textPart = {
+            text: "Transcribe this audio recording precisely. Provide only the text from the audio, without any additional comments or summaries.",
+        };
+        
+        const response = await ai.models.generateContent({
+            model: Model.GEMINI_2_5_FLASH,
+            contents: { parts: [audioPart, textPart] },
+        });
+
+        return response.text ?? '';
+
+    } catch (error) {
+        console.error('Error calling Gemini API for transcription:', error);
+        throw new Error('Failed to transcribe audio via Gemini API.');
+    }
+}
+
 
 export async function generateChatResponse(
   messages: ChatMessage[], 
@@ -245,16 +275,10 @@ export async function generateChatResponse(
     const isGemmaModel = modelName.startsWith('gemma');
     const isImageEditModel = [Model.GEMINI_2_0_FLASH_PREVIEW_IMAGE_GENERATION, Model.GEMINI_2_5_FLASH_IMAGE_PREVIEW].includes(modelName as Model);
 
-    const params: GenerateContentParameters = {
-        model: modelName,
-        contents: contents,
-        config: {
-            ...options.config,
-        },
-    };
-    
-    if (isImageEditModel && params.config) {
-      params.config.responseModalities = ['IMAGE', 'TEXT'];
+    const config = { ...options.config };
+
+    if (isImageEditModel) {
+      config.responseModalities = ['IMAGE', 'TEXT'];
     }
 
     // Gemma and Image Edit models do not support system instructions.
@@ -262,23 +286,24 @@ export async function generateChatResponse(
         const finalSystemInstruction = (options.systemInstruction && options.systemInstruction.trim() !== '')
             ? options.systemInstruction
             : DEFAULT_SYSTEM_INSTRUCTION;
-        if (params.config) {
-            params.config.systemInstruction = finalSystemInstruction;
-        }
+        config.systemInstruction = finalSystemInstruction;
     }
 
     // Clean up undefined properties to avoid sending them in the API call
-    const config = params.config;
-    if (config) {
-        (Object.keys(config) as Array<keyof typeof config>).forEach(key => {
-            if (config[key] === undefined) {
-                delete config[key];
-            }
-        });
-        if (config.tools && config.tools.length === 0) {
-            delete config.tools;
+    (Object.keys(config) as Array<keyof typeof config>).forEach(key => {
+        if (config[key] === undefined) {
+            delete config[key];
         }
+    });
+    if (config.tools && (config.tools.length === 0 || isGemmaModel)) {
+        delete config.tools;
     }
+
+    const params: GenerateContentParameters = {
+        model: modelName,
+        contents: contents,
+        config: config,
+    };
     
     // Image Editing models use the non-streaming generateContent API
     if (isImageEditModel) {
