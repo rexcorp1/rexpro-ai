@@ -1,24 +1,27 @@
-# Logs
-logs
-*.log
-npm-debug.log*
+# dependencies
+/node_modules
+/.pnp
+.pnp.cjs
+
+# testing
+/coverage
+
+# production
+/build
+/dist
+/dev-dist
+
+# misc
+.DS_Store
+*.env
+*.env.local
+.npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+.eslintcache
+.vitepress/cache
+*.tgz
 
-node_modules
-dist
-dist-ssr
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
+# IDE
+.vscode
 .idea
-.DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
