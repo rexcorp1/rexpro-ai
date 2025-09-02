@@ -232,6 +232,31 @@ export async function generateVideo(
     }
 }
 
+export async function transcribeAudio(audioBase64: string, mimeType: string): Promise<string> {
+    try {
+        const audioPart = {
+            inlineData: {
+              mimeType,
+              data: audioBase64,
+            },
+        };
+
+        const textPart = {
+            text: "Transcribe this audio recording precisely. Provide only the text from the audio, without any additional comments or summaries.",
+        };
+        
+        const response = await ai.models.generateContent({
+            model: Model.GEMINI_2_5_FLASH,
+            contents: { parts: [audioPart, textPart] },
+        });
+
+        return response.text ?? '';
+
+    } catch (error) {
+        console.error('Error calling Gemini API for transcription:', error);
+        throw new Error('Failed to transcribe audio via Gemini API.');
+    }
+}
 
 export async function generateChatResponse(
   messages: ChatMessage[], 
@@ -277,6 +302,10 @@ export async function generateChatResponse(
         });
         if (config.tools && config.tools.length === 0) {
             delete config.tools;
+        }
+        // Tambahkan cek untuk stopSequences agar tidak mengirim array kosong
+        if (Array.isArray(config.stopSequences) && config.stopSequences.length === 0) {
+            delete config.stopSequences;
         }
     }
     

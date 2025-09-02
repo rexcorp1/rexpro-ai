@@ -1,6 +1,10 @@
+
+
+
+
 import React, { useState, useRef, useEffect } from 'react';
 import { ChatMessage, Role, Attachment, Project } from '../types';
-import { ArrowUp, Copy, Check, Paperclip, X, ChevronDown, SquareCode, Settings2, Microscope, Image, Video, Square, AudioLines, Mic, Download } from 'lucide-react';
+import { ArrowUp, Copy, Check, Paperclip, X, ChevronDown, SquareCode, Settings2, Microscope, Image, Video, Square, AudioLines, Mic, Download, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -8,6 +12,7 @@ import rehypeKatex from 'rehype-katex';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { coldarkCold, coldarkDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import ProjectFileCard from './ProjectFileCard';
+import { transcribeAudio } from '../services/geminiService';
 
 
 interface ChatAreaProps {
@@ -350,6 +355,11 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isToolsMenuOpen, setIsToolsMenuOpen] = useState(false);
   const [isToolsBottomSheetOpen, setIsToolsBottomSheetOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
+  const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -464,15 +474,150 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
   
-  const placeholder = isTextToImageModel 
+  const handleStopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.stop();
+    }
+    setIsVoiceRecording(false);
+  };
+
+  const handleStartRecording = async () => {
+    if (isVoiceRecording) return;
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        audioChunksRef.current = [];
+
+        mediaRecorderRef.current.ondataavailable = (event) => {
+            audioChunksRef.current.push(event.data);
+        };
+
+        mediaRecorderRef.current.onstop = async () => {
+            const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.readAsDataURL(audioBlob);
+            reader.onloadend = async () => {
+                if (typeof reader.result === 'string') {
+                    const dataUrlParts = reader.result.split(',');
+                    const base64Audio = dataUrlParts.length > 1 ? dataUrlParts[1] : undefined;
+                    if (base64Audio) {
+                        setIsTranscribing(true);
+                        try {
+                            const transcribedText = await transcribeAudio(base64Audio, 'audio/webm');
+                            setInput(prev => (prev ? prev.trim() + ' ' : '') + transcribedText);
+                            const textarea = textareaRef.current;
+                            if (textarea) {
+                                setTimeout(() => {
+                                    textarea.style.height = 'auto';
+                                    textarea.style.height = `${textarea.scrollHeight}px`;
+                                    textarea.focus();
+                                }, 0);
+                            }
+                        } catch (error) {
+                            console.error("Transcription failed:", error);
+                            alert("Sorry, I couldn't understand that. Please try again.");
+                        } finally {
+                            setIsTranscribing(false);
+                        }
+                    } else {
+                        console.error("Could not extract base64 data from audio data URL.");
+                        alert("Sorry, there was a problem processing the audio.");
+                    }
+                }
+            };
+            stream.getTracks().forEach(track => track.stop());
+        };
+
+        mediaRecorderRef.current.start();
+        setIsVoiceRecording(true);
+    } catch (err) {
+        console.error("Microphone access denied or error:", err);
+        alert("Microphone access is required for voice input. Please enable it in your browser settings.");
+    }
+  };
+
+  const handleMicClick = () => {
+      if (isVoiceRecording) {
+          handleStopRecording();
+      } else {
+          handleStartRecording();
+      }
+  };
+  
+  const isSendDisabled = isLoading || 
+    (!input.trim() && attachedFiles.length === 0) ||
+    (isImageEditModel && attachedFiles.length === 0);
+
+  const placeholder = isVoiceRecording
+    ? "Recording... click mic to stop."
+    : isTranscribing
+    ? "Transcribing audio..."
+    : isTextToImageModel 
     ? "Describe the image you want to generate..." 
     : isImageEditModel 
-      ? "Describe an image to generate, or attach one to edit..."
+      ? (attachedFiles.length > 0 ? "Describe the edits you want to make..." : "Attach an image to edit...")
       : isVideoModel 
         ? "Describe the video you want to create..."
         : "Type your message here, or attach files...";
 
-  const isSendDisabled = isLoading || (!input.trim() && attachedFiles.length === 0);
+
+  const renderMicOrSendButton = () => {
+      if (isTranscribing) {
+          return (
+              <button
+                  type="button"
+                  className="w-10 h-10 text-gray-500 rounded-lg flex items-center justify-center"
+                  disabled
+              >
+                  <Loader2 className="h-5 w-5 animate-spin" />
+              </button>
+          );
+      }
+
+      if (isVoiceRecording) {
+          return (
+              <button
+                  type="button"
+                  onClick={handleMicClick}
+                  className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center transition-colors dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  aria-label="Stop recording"
+                  data-tooltip-text="Stop recording"
+                  data-tooltip-position="top"
+              >
+                  <Mic className="h-5 w-5 text-red-600 animate-pulse" />
+              </button>
+          );
+      }
+      
+      if (isSendDisabled) {
+          return (
+              <button 
+                  type="button"
+                  onClick={handleMicClick}
+                  className="w-10 h-10 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 rounded-lg flex items-center justify-center transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+                  aria-label="Start Voice Input"
+                  data-tooltip-text="Voice Input"
+                  data-tooltip-position="top"
+              >
+                  <Mic className="h-5 w-5" />
+              </button>
+          );
+      }
+
+      return (
+          <button
+              type="submit"
+              className="w-10 h-10 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed dark:disabled:bg-blue-800"
+              aria-label="Send message"
+              data-tooltip-text="Send message"
+              data-tooltip-position="top"
+              disabled={isSendDisabled}
+          >
+              <ArrowUp className="h-6 w-6" />
+          </button>
+      );
+  };
+
 
   return (
     <div className="flex-1 flex flex-col bg-white dark:bg-gray-950 h-full overflow-hidden">
@@ -587,7 +732,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     }}
                     placeholder={placeholder}
                     className={`w-full resize-none focus:outline-none bg-transparent text-sm hover-scrollbar [scrollbar-gutter:stable] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 ${attachedFiles.length > 0 ? 'px-4 pt-2 pb-4' : 'p-4'}`}
-                    disabled={isLoading}
+                    disabled={isLoading || isVoiceRecording || isTranscribing}
                     style={{maxHeight: '200px'}}
                 />
                 <div className="flex justify-between items-center px-4 pb-3">
@@ -685,28 +830,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                             </button>
                         ) : (
                             <>
-                                {isSendDisabled ? (
-                                    <button 
-                                        type="button" 
-                                        className="w-10 h-10 text-gray-500 rounded-lg flex items-center justify-center hover:bg-gray-100 transition-colors dark:text-gray-400 dark:hover:bg-gray-800"
-                                        aria-label="Start Voice Input"
-                                        data-tooltip-text="Voice Input"
-                                        data-tooltip-position="top"
-                                    >
-                                        <Mic className="h-5 w-5" />
-                                    </button>
-                                ) : (
-                                    <button
-                                        type="submit"
-                                        className="w-10 h-10 bg-blue-600 text-white rounded-lg flex items-center justify-center hover:bg-blue-700 transition-colors disabled:bg-blue-300 disabled:cursor-not-allowed dark:disabled:bg-blue-800"
-                                        aria-label="Send message"
-                                        data-tooltip-text="Send message"
-                                        data-tooltip-position="top"
-                                        disabled={isSendDisabled}
-                                    >
-                                        <ArrowUp className="h-6 w-6" />
-                                    </button>
-                                )}
+                                {renderMicOrSendButton()}
                                 <button 
                                     type="button"
                                     onClick={onStartLiveConversation}

@@ -1,19 +1,21 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Sidebar } from './components/Sidebar';
-import { ChatArea } from './components/ChatArea';
 import { Model, ChatMessage, Role, MediaResolution, Attachment, ChatSession, TunedModel, TuningStatus, Project, FileSystemNode, initialFiles, LiveConversationModel } from './types';
 import { generateChatResponse, countTokens, generateImage, generateVideo } from './services/geminiService';
 import { Settings, Settings2, PanelLeft } from 'lucide-react';
 import { HeaderModelSelector } from './components/HeaderModelSelector';
 import { Modal } from './components/Modal';
 import { GenerateContentResponse, Type } from '@google/genai';
-import { FilesSidebar } from './components/FilesSidebar';
 import { ConfirmationModal } from './components/ConfirmationModal';
-import CodeInterpreterPanel, { StreamingTarget } from './components/CodeInterpreterPanel';
-import { LiveConversation } from './components/LiveConversation';
-import { SettingsModal } from './components/SettingsModal';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { NavigationSidebar } from './components/NavigationSidebar';
+import { StreamingTarget } from './components/CodeInterpreterPanel';
+
+const Sidebar = React.lazy(() => import('./components/Sidebar').then(module => ({ default: module.Sidebar })));
+const ChatArea = React.lazy(() => import('./components/ChatArea').then(module => ({ default: module.ChatArea })));
+const FilesSidebar = React.lazy(() => import('./components/FilesSidebar').then(module => ({ default: module.FilesSidebar })));
+const CodeInterpreterPanel = React.lazy(() => import('./components/CodeInterpreterPanel'));
+const LiveConversation = React.lazy(() => import('./components/LiveConversation').then(module => ({ default: module.LiveConversation })));
+const SettingsModal = React.lazy(() => import('./components/SettingsModal').then(module => ({ default: module.SettingsModal })));
 
 
 const modelMaxTokens: Partial<Record<Model, number>> = {
@@ -90,7 +92,6 @@ const App: React.FC = () => {
   const [activeChatId, setActiveChatId] = useState<string | null>(() => {
     try {
       const savedActiveId = localStorage.getItem('activeChatId');
-      // A null ID is a valid state for a new chat, so we don't default it if history exists
       return savedActiveId ? JSON.parse(savedActiveId) : null;
     } catch (error) {
       console.error("Failed to load active chat ID from localStorage", error);
@@ -118,7 +119,6 @@ const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isClearHistoryModalOpen, setIsClearHistoryModalOpen] = useState(false);
   
-  // Code Interpreter & Tools State
   const [isCodeInterpreterToggled, setIsCodeInterpreterToggled] = useState<boolean>(false);
   const [isDeepResearchToggled, setIsDeepResearchToggled] = useState<boolean>(false);
   const [isImageToolActive, setIsImageToolActive] = useState<boolean>(false);
@@ -140,7 +140,6 @@ const App: React.FC = () => {
   });
 
 
-  // Sidebar settings state
   const [systemInstruction, setSystemInstruction] = useState<string>('');
   const [temperature, setTemperature] = useState<number>(1);
   const [topP, setTopP] = useState<number>(0.95);
@@ -153,14 +152,12 @@ const App: React.FC = () => {
   const [useThinkingBudget, setUseThinkingBudget] = useState<boolean>(false);
   const [thinkingBudget, setThinkingBudget] = useState<number>(8000);
 
-  // Imagen settings state
   const [numberOfImages, setNumberOfImages] = useState<number>(1);
   const [negativePrompt, setNegativePrompt] = useState<string>('');
   const [seed, setSeed] = useState<number | undefined>(undefined);
   const [aspectRatio, setAspectRatio] = useState<string>('1:1');
   const [personGeneration, setPersonGeneration] = useState<string>('allow_all');
 
-  // Tools state
   const [useStructuredOutput, setUseStructuredOutput] = useState<boolean>(false);
   const [structuredOutputSchema, setStructuredOutputSchema] = useState<string>('');
   const [isSchemaModalOpen, setIsSchemaModalOpen] = useState<boolean>(false);
@@ -176,13 +173,12 @@ const App: React.FC = () => {
   const [useUrlContext, setUseUrlContext] = useState<boolean>(false);
   const [urlContext, setUrlContext] = useState<string>('');
   
-  // Tuning state
   const [tunedModels, setTunedModels] = useState<TunedModel[]>([]);
   
-  // Deletion confirmation state
   const [chatToDelete, setChatToDelete] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const fullResponseTextRef = useRef<string>('');
 
   const activeChat = useMemo(() => activeChatId ? chatHistory.find(c => c.id === activeChatId) : null, [chatHistory, activeChatId]);
   const activeProject = useMemo(() => activeChat?.project, [activeChat]);
@@ -200,7 +196,6 @@ const App: React.FC = () => {
 
 
   const handleNewChat = useCallback(() => {
-    // If we're already on a new, unsaved chat, do nothing.
     if (activeChatId === null) return;
     
     setActiveChatId(null);
@@ -267,13 +262,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const activeChatExists = chatHistory.some(chat => chat.id === activeChatId);
-    // If activeChatId is null, we are on a new chat screen, which is a valid state.
     if (activeChatId === null) return;
     
     if (chatHistory.length > 0 && !activeChatExists) {
         setActiveChatId(chatHistory[0].id);
     } else if (chatHistory.length === 0) {
-        // This will set activeChatId to null
         setActiveChatId(null);
     }
   }, [chatHistory, activeChatId]);
@@ -506,10 +499,13 @@ const App: React.FC = () => {
     abortControllerRef.current = new AbortController();
     const signal = abortControllerRef.current.signal;
     
+    // reset full response text ref
+    fullResponseTextRef.current = '';
+
     const isNewChat = activeChatId === null;
     let currentChatId = isNewChat ? Date.now().toString() : activeChatId!;
     let currentChat: ChatSession;
-
+    
     const uiUserMessage: ChatMessage = { id: `msg-user-${Date.now()}`, role: Role.USER, content: prompt, attachments };
     let placeholderContent = '';
     if (isVideoRequest) {
@@ -540,7 +536,6 @@ const App: React.FC = () => {
     let systemInstructionForApi = systemInstruction;
     
     if (isInterpreterRequest) {
-        // Find the most up-to-date project object, which might have just been created
         let projectForApi = chatHistory.find(c => c.id === currentChatId)?.project;
         if (!projectForApi) {
             const newProject = createNewProject(`Project for: ${prompt.substring(0, 30)}...`);
@@ -586,13 +581,12 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 5.  **EXPLANATION:** The \`explanation\` field should be a clear, user-friendly description of what you did.`;
     }
 
-    // For the API call, we need the history *before* this turn's user message.
     const messagesForApi: ChatMessage[] = [...(currentChat.messages.slice(0, -2)), apiUserMessage];
     
-    let fullResponseText = '';
     let groundingChunks: any[] = [];
     let finalParts: any[] = [];
     let fullResponse: GenerateContentResponse | null = null;
+    
 
     try {
         if (isImageRequest && isTextToImageModel) {
@@ -631,29 +625,42 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 
             const options = { systemInstruction: finalSystemInstruction, config };
             
-            await generateChatResponse(messagesForApi, modelForApi as Model, options, (chunk: GenerateContentResponse) => {
-                fullResponse = chunk; // In non-streaming, this is the only chunk.
-                if (chunk.candidates?.[0]?.content?.parts) {
-                    finalParts = chunk.candidates[0].content.parts;
+            setChatHistory(prev => prev.map(chat => {
+                if (chat.id === currentChatId) {
+                    const updatedMessages = [...chat.messages.slice(0, -1)];
+                    updatedMessages.push({ ...placeholderModelMessage, content: '' });
+                    return { ...chat, messages: updatedMessages };
                 }
+                return chat;
+            }));
 
-                let chunkText = chunk.text;
-                fullResponseText += chunkText;
+            await generateChatResponse(messagesForApi, modelForApi as Model, options, (chunk: GenerateContentResponse) => {
+                const chunkText = chunk.text;
+                if (chunkText) {
+                    fullResponseTextRef.current += chunkText;
+                    setChatHistory(prev => prev.map(chat => {
+                        if (chat.id === currentChatId) {
+                            const lastMsg = chat.messages[chat.messages.length - 1];
+                            if (lastMsg && lastMsg.role === Role.MODEL) {
+                                return { 
+                                    ...chat, 
+                                    messages: [
+                                        ...chat.messages.slice(0, -1),
+                                        { ...lastMsg, content: fullResponseTextRef.current }
+                                    ]
+                                };
+                            }
+                        }
+                        return chat;
+                    }));
+                }
                 
                 const newChunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
                 if (newChunks) {
                     groundingChunks.push(...newChunks);
                 }
                 
-                if (!isInterpreterRequest && !isImageEditModel && !isTextToImageModel && !isVideoModel) {
-                    const updater = (prevSession: ChatSession): ChatSession => {
-                        let lastMessage = prevSession.messages[prevSession.messages.length - 1];
-                        if (!lastMessage || lastMessage.role !== Role.MODEL) return prevSession;
-                        let updatedMessage = { ...lastMessage, content: fullResponseText };
-                        return { ...prevSession, messages: [...prevSession.messages.slice(0, -1), updatedMessage] };
-                    };
-                    setChatHistory(prev => prev.map(chat => chat.id === currentChatId ? updater(chat) : chat));
-                }
+                fullResponse = chunk;
             }, signal);
         }
     } catch (error) {
@@ -675,12 +682,15 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             return; 
         }
 
-        if(fullResponse) {
-          finalParts = fullResponse.candidates?.[0]?.content?.parts || finalParts;
-          fullResponseText = fullResponse.text || fullResponseText;
+      const fullResponseText = fullResponseTextRef.current;
+      if (fullResponse) {
+        finalParts = fullResponse.candidates?.[0]?.content?.parts || finalParts;
+        if (isImageRequest || isVideoRequest) {
+          // No need to use fullResponseText here for image/video
         }
-
-        const finalUpdater = (prev: ChatSession): ChatSession => {
+      }
+      
+      const finalUpdater = (prev: ChatSession): ChatSession => {
             const lastMsg = prev.messages[prev.messages.length - 1];
             if (lastMsg?.role === Role.MODEL) {
               
@@ -704,7 +714,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
                             finalAttachments.push(attachment);
                         }
                     });
-                } else if (fullResponseText) { // Fallback if parts aren't there but text is
+                } else if (fullResponseText) {
                     finalContent = fullResponseText;
                 }
                 
@@ -818,7 +828,6 @@ You **MUST** respond with a single JSON object that conforms to this schema:
     setChatHistory(prevHistory => {
         const newHistory = prevHistory.filter(chat => chat.id !== chatToDelete);
         if (activeChatId === chatToDelete) {
-            // If the deleted chat was active, switch to a new chat screen
             setActiveChatId(null);
         }
         return newHistory;
@@ -975,78 +984,95 @@ You **MUST** respond with a single JSON object that conforms to this schema:
 
             <div className="flex-1 flex min-h-0">
                 <main className={`flex flex-col min-w-0 bg-white dark:bg-gray-950 md:border border-gray-200 dark:border-gray-700 md:rounded-lg overflow-hidden transition-all duration-300 ease-in-out ${isCodePanelVisible ? (isWidePreview ? 'hidden' : 'flex-1') : 'w-full'}`}>
-                    <ChatArea
-                        messages={messages}
-                        onSendMessage={handleSendMessage}
-                        isLoading={isLoading}
-                        onStopGeneration={handleStopGeneration}
-                        isCodeInterpreterActive={isCodeInterpreterToggled}
-                        onToggleCodeInterpreter={handleToggleCodeInterpreter}
-                        isDeepResearchActive={isDeepResearchToggled}
-                        onToggleDeepResearch={handleToggleDeepResearch}
-                        isImageToolActive={isImageToolActive}
-                        onToggleImageTool={handleToggleImageTool}
-                        isVideoToolActive={isVideoToolActive}
-                        onToggleVideoTool={handleToggleVideoTool}
-                        onOpenProjectVersion={handleOpenProjectVersion}
-                        isTextToImageModel={isTextToImageModel}
-                        isImageEditModel={isImageEditModel}
-                        isVideoModel={isVideoModel}
-                        isMobile={isMobile}
-                        onStartLiveConversation={() => setIsLiveConversationOpen(true)}
-                    />
+                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">Loading Chat...</div>}>
+                        <ChatArea
+                            messages={messages}
+                            onSendMessage={handleSendMessage}
+                            isLoading={isLoading}
+                            onStopGeneration={handleStopGeneration}
+                            isCodeInterpreterActive={isCodeInterpreterToggled}
+                            onToggleCodeInterpreter={handleToggleCodeInterpreter}
+                            isDeepResearchActive={isDeepResearchToggled}
+                            onToggleDeepResearch={handleToggleDeepResearch}
+                            isImageToolActive={isImageToolActive}
+                            onToggleImageTool={handleToggleImageTool}
+                            isVideoToolActive={isVideoToolActive}
+                            onToggleVideoTool={handleToggleVideoTool}
+                            onOpenProjectVersion={handleOpenProjectVersion}
+                            isTextToImageModel={isTextToImageModel}
+                            isImageEditModel={isImageEditModel}
+                            isVideoModel={isVideoModel}
+                            isMobile={isMobile}
+                            onStartLiveConversation={() => setIsLiveConversationOpen(true)}
+                        />
+                    </React.Suspense>
                 </main>
                 
                 {isCodePanelVisible && (
                      <div className={`flex-shrink-0 overflow-hidden ml-2 transition-all duration-300 ease-in-out ${isWidePreview ? 'flex-1' : 'w-[800px]'}`} style={{ display: isMobile ? 'none' : 'flex' }}>
-                        <CodeInterpreterPanel
-                            isMobile={isMobile}
-                            isDarkMode={false}
-                            project={activeProject}
-                            onProjectChange={handleProjectChange}
-                            onClose={() => {
-                                setIsCodePanelVisible(false);
-                                setIsWidePreview(false);
-                            }}
-                            activeFilePath={activeInterpreterFile}
-                            streamingTarget={streamingTarget}
-                            onStreamComplete={handleStreamComplete}
-                            isWidePreview={isWidePreview}
-                            onToggleWidePreview={() => setIsWidePreview(p => !p)}
-                        />
+                        <React.Suspense fallback={<div className="flex items-center justify-center h-full w-full text-gray-500 dark:text-gray-400">Loading Code Interpreter...</div>}>
+                            <CodeInterpreterPanel
+                                isMobile={isMobile}
+                                isDarkMode={false}
+                                project={activeProject}
+                                onProjectChange={handleProjectChange}
+                                onClose={() => {
+                                    setIsCodePanelVisible(false);
+                                    setIsWidePreview(false);
+                                }}
+                                activeFilePath={activeInterpreterFile}
+                                streamingTarget={streamingTarget}
+                                onStreamComplete={handleStreamComplete}
+                                isWidePreview={isWidePreview}
+                                onToggleWidePreview={() => setIsWidePreview(p => !p)}
+                            />
+                        </React.Suspense>
                     </div>
                 )}
 
-                <Sidebar
-                    selectedModel={selectedModel} setSelectedModel={setSelectedModel} isSidebarOpen={isRightSidebarOpen} modelOptions={combinedModelOptions} systemInstruction={systemInstruction} setSystemInstruction={setSystemInstruction} temperature={temperature} setTemperature={setTemperature} topP={topP} setTopP={setTopP} maxOutputTokens={maxOutputTokens} setMaxOutputTokens={setMaxOutputTokens} stopSequence={stopSequence} setStopSequence={setStopSequence} tokenCount={tokenCount} modelMaxTokens={modelMaxTokensForSidebar} mediaResolution={mediaResolution} setMediaResolution={setMediaResolution} useThinking={useThinking} setUseThinking={setUseThinking} useThinkingBudget={useThinkingBudget} setUseThinkingBudget={setUseThinkingBudget} thinkingBudget={thinkingBudget} setThinkingBudget={setThinkingBudget} useStructuredOutput={useStructuredOutput} setUseStructuredOutput={toggleStructuredOutput} openSchemaModal={openSchemaModal} useCodeExecution={useCodeExecution} setUseCodeExecution={setUseCodeExecution} useFunctionCalling={useFunctionCalling} setUseFunctionCalling={setUseFunctionCalling} openFunctionModal={openFunctionModal} useGoogleSearch={isDeepResearchToggled || useGoogleSearch} setUseGoogleSearch={toggleGoogleSearch} useUrlContext={useUrlContext} setUseUrlContext={setUseUrlContext} urlContext={urlContext} setUrlContext={setUrlContext} isMobile={isMobile} isGemmaModel={isGemmaModel} isImageEditModel={isImageEditModel} isTextToImageModel={isTextToImageModel} isVideoModel={isVideoModel} isThinkingModel={isThinkingModel} isProModel={isProModel}
-                    numberOfImages={numberOfImages} setNumberOfImages={setNumberOfImages}
-                    negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
-                    seed={seed} setSeed={setSeed}
-                    aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
-                    personGeneration={personGeneration} setPersonGeneration={setPersonGeneration}
-                />
-                <FilesSidebar isSidebarOpen={isFilesSidebarOpen} messages={messages} onDeleteAttachment={handleDeleteAttachment} tunedModels={tunedModels} onStartTuning={handleStartTuning} onUpdateTuning={handleUpdateTuning} onDeleteTunedModel={handleDeleteTunedModel} modelOptions={modelOptions} isMobile={isMobile} />
+                <React.Suspense fallback={<div className="flex-shrink-0 w-80 p-4">Loading Sidebar...</div>}>
+                    <Sidebar
+                        selectedModel={selectedModel} setSelectedModel={setSelectedModel} isSidebarOpen={isRightSidebarOpen} modelOptions={combinedModelOptions} systemInstruction={systemInstruction} setSystemInstruction={setSystemInstruction} temperature={temperature} setTemperature={setTemperature} topP={topP} setTopP={setTopP} maxOutputTokens={maxOutputTokens} setMaxOutputTokens={setMaxOutputTokens} stopSequence={stopSequence} setStopSequence={setStopSequence} tokenCount={tokenCount} modelMaxTokens={modelMaxTokensForSidebar} mediaResolution={mediaResolution} setMediaResolution={setMediaResolution} useThinking={useThinking} setUseThinking={setUseThinking} useThinkingBudget={useThinkingBudget} setUseThinkingBudget={setUseThinkingBudget} thinkingBudget={thinkingBudget} setThinkingBudget={setThinkingBudget} useStructuredOutput={useStructuredOutput} setUseStructuredOutput={toggleStructuredOutput} openSchemaModal={openSchemaModal} useCodeExecution={useCodeExecution} setUseCodeExecution={setUseCodeExecution} useFunctionCalling={useFunctionCalling} setUseFunctionCalling={setUseFunctionCalling} openFunctionModal={openFunctionModal} useGoogleSearch={isDeepResearchToggled || useGoogleSearch} setUseGoogleSearch={toggleGoogleSearch} useUrlContext={useUrlContext} setUseUrlContext={setUseUrlContext} urlContext={urlContext} setUrlContext={setUrlContext} isMobile={isMobile} isGemmaModel={isGemmaModel} isImageEditModel={isImageEditModel} isTextToImageModel={isTextToImageModel} isVideoModel={isVideoModel} isThinkingModel={isThinkingModel} isProModel={isProModel}
+                        numberOfImages={numberOfImages} setNumberOfImages={setNumberOfImages}
+                        negativePrompt={negativePrompt} setNegativePrompt={setNegativePrompt}
+                        seed={seed} setSeed={setSeed}
+                        aspectRatio={aspectRatio} setAspectRatio={setAspectRatio}
+                        personGeneration={personGeneration} setPersonGeneration={setPersonGeneration}
+                    />
+                </React.Suspense>
+
+                <React.Suspense fallback={<div className="flex-shrink-0 w-80 p-4">Loading Files Sidebar...</div>}>
+                    <FilesSidebar isSidebarOpen={isFilesSidebarOpen} messages={messages} onDeleteAttachment={handleDeleteAttachment} tunedModels={tunedModels} onStartTuning={handleStartTuning} onUpdateTuning={handleUpdateTuning} onDeleteTunedModel={handleDeleteTunedModel} modelOptions={modelOptions} isMobile={isMobile} />
+                </React.Suspense>
             </div>
         </div>
-        <Modal isOpen={isSchemaModalOpen} onClose={() => setIsSchemaModalOpen(false)} onSave={saveSchema} title="Edit Structured Output Schema" content={tempSchema} setContent={setTempSchema} placeholder={placeholderSchema} helpText="Define the JSON schema for the model's output..." />
+
+        <Modal isOpen={isSchemaModalOpen} onClose={() => setIsSchemaModalOpen(false)} onSave={saveSchema} title="Edit Structured Output Schema" content={tempSchema} setContent={setTempSchema} placeholder={placeholderSchema} helpText={<>Define the JSON schema for the model's output... See the <a href="https://ai.google.dev/docs/tool_library" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">documentation</a> for the correct format.</>} />
         <Modal isOpen={isFunctionModalOpen} onClose={() => setIsFunctionModalOpen(false)} onSave={saveDeclarations} title="Edit Function Declarations" content={tempDeclarations} setContent={setTempDeclarations} placeholder={placeholderDeclarations} helpText={<>Define functions the model can call. See the <a href="https://ai.google.dev/docs/function_calling" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">documentation</a> for the correct format.</>} />
         <ConfirmationModal isOpen={!!chatToDelete} onClose={() => setChatToDelete(null)} onConfirm={confirmDeleteChat} title="Delete Chat">Are you sure you want to delete this chat? This action cannot be undone.</ConfirmationModal>
-        <LiveConversation 
-            isOpen={isLiveConversationOpen} 
-            onClose={() => setIsLiveConversationOpen(false)}
-            appTheme={effectiveTheme}
-            model={liveConversationModel}
-        />
-        <SettingsModal 
-            isOpen={isSettingsModalOpen}
-            onClose={() => setIsSettingsModalOpen(false)}
-            theme={theme}
-            setTheme={setTheme}
-            onExportHistory={handleExportHistory}
-            onClearHistory={() => setIsClearHistoryModalOpen(true)}
-            liveConversationModel={liveConversationModel}
-            setLiveConversationModel={setLiveConversationModel}
-        />
+        
+        <React.Suspense fallback={null}>
+            <LiveConversation 
+                isOpen={isLiveConversationOpen} 
+                onClose={() => setIsLiveConversationOpen(false)}
+                appTheme={effectiveTheme}
+                model={liveConversationModel}
+            />
+        </React.Suspense>
+
+        <React.Suspense fallback={null}>
+            <SettingsModal 
+                isOpen={isSettingsModalOpen}
+                onClose={() => setIsSettingsModalOpen(false)}
+                theme={theme}
+                setTheme={setTheme}
+                onExportHistory={handleExportHistory}
+                onClearHistory={() => setIsClearHistoryModalOpen(true)}
+                liveConversationModel={liveConversationModel}
+                setLiveConversationModel={setLiveConversationModel}
+            />
+        </React.Suspense>
+        
         <ConfirmationModal
             isOpen={isClearHistoryModalOpen}
             onClose={() => setIsClearHistoryModalOpen(false)}
