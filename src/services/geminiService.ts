@@ -1,7 +1,7 @@
 import { GoogleGenAI, GenerateContentParameters, Tool, GenerateContentResponse, Content } from "@google/genai";
 import { Model, ChatMessage, Attachment } from '../types';
 
-const API_KEY = process.env.API_KEY;
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 if (!API_KEY) {
   throw new Error("API_KEY environment variable not set.");
@@ -154,7 +154,7 @@ export async function generateImage(
 export async function generateVideo(
   prompt: string,
   attachments: Attachment[],
-  modelName: Model.VEO_2_0_GENERATE_001,
+  modelName: Model.VEO_2_0_GENERATE_001 | Model.VEO_3_0_GENERATE_PREVIEW | Model.VEO_3_0_FAST_GENERATE_PREVIEW,
   signal: AbortSignal
 ): Promise<GenerateContentResponse> {
     try {

@@ -10,6 +10,8 @@ export enum Model {
   IMAGEN_4_0_ULTRA_GENERATE_001 = 'imagen-4.0-ultra-generate-001',
   IMAGEN_4_0_FAST_GENERATE_001 = 'imagen-4.0-fast-generate-001',
   IMAGEN_3_0_GENERATE_002 = 'imagen-3.0-generate-002',
+  VEO_3_0_GENERATE_PREVIEW = 'veo-3.0-generate-preview',
+  VEO_3_0_FAST_GENERATE_PREVIEW = 'veo-3.0-fast-generate-preview',
   VEO_2_0_GENERATE_001 = 'veo-2.0-generate-001',
   GEMMA_3N_E2B = 'gemma-3n-e2b-it',
   GEMMA_3N_E4B = 'gemma-3n-e4b-it',
@@ -64,7 +66,10 @@ export enum TuningStatus {
 }
 
 export enum LiveConversationModel {
+  GEMINI_LIVE_2_5_FLASH_PREVIEW = 'gemini-live-2.5-flash-preview',
   GEMINI_2_5_FLASH_NATIVE_AUDIO = 'gemini-2.5-flash-preview-native-audio-dialog',
+  GEMINI_2_5_FLASH_EXP_NATIVE_AUDIO_THINKING = 'gemini-2.5-flash-exp-native-audio-thinking-dialog',
+  GEMINI_2_0_FLASH_LIVE_001 = 'gemini-2.0-flash-live-001',
 }
 
 export interface TrainingFile {
@@ -105,7 +110,7 @@ export const initialFiles: { [key: string]: FileSystemNode } = {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale-1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>AI Project Preview</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>

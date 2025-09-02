@@ -301,6 +301,8 @@ const modelMaxTokens: Partial<Record<Model, number>> = {
     [Model.IMAGEN_4_0_ULTRA_GENERATE_001]: 4096,
     [Model.IMAGEN_4_0_FAST_GENERATE_001]: 4096,
     [Model.IMAGEN_3_0_GENERATE_002]: 4096,
+    [Model.VEO_3_0_GENERATE_PREVIEW]: 32768,
+    [Model.VEO_3_0_FAST_GENERATE_PREVIEW]: 32768,
     [Model.VEO_2_0_GENERATE_001]: 32768,
     [Model.GEMMA_3N_E2B]: 8192,
     [Model.GEMMA_3N_E4B]: 8192,
@@ -554,7 +556,9 @@ const App: React.FC = () => {
   };
 
   const videoGenerationModelNameMap: Partial<Record<Model, string>> = {
-    [Model.VEO_2_0_GENERATE_001]: 'Veo 3',
+    [Model.VEO_3_0_GENERATE_PREVIEW]: 'Veo 3 Preview',
+    [Model.VEO_3_0_FAST_GENERATE_PREVIEW]: 'Veo 3 Fast Preview',
+    [Model.VEO_2_0_GENERATE_001]: 'Veo 2',
   };
   
   const modelOptions = useMemo(() => (Object.keys(chatModelNameMap) as Model[]).map(modelKey => ({ value: modelKey, label: chatModelNameMap[modelKey]! })), [chatModelNameMap]);
@@ -617,7 +621,7 @@ const App: React.FC = () => {
         }
     } else if (isVideoToolActive) {
         if (!videoGenModels.includes(selectedModel)) {
-            setSelectedModel(Model.VEO_2_0_GENERATE_001);
+            setSelectedModel(Model.VEO_3_0_GENERATE_PREVIEW);
         }
     } else {
         if (allMultimediaModels.includes(selectedModel)) {
@@ -636,7 +640,7 @@ const App: React.FC = () => {
     Model.IMAGEN_3_0_GENERATE_002
 ].includes(activeBaseModel as Model) : false, [activeBaseModel]);
   const isImageEditModel = useMemo(() => activeBaseModel ? [Model.GEMINI_2_0_FLASH_PREVIEW_IMAGE_GENERATION, Model.GEMINI_2_5_FLASH_IMAGE_PREVIEW].includes(activeBaseModel as Model) : false, [activeBaseModel]);
-  const isVideoModel = useMemo(() => activeBaseModel === Model.VEO_2_0_GENERATE_001, [activeBaseModel]);
+  const isVideoModel = useMemo(() => activeBaseModel ? [Model.VEO_2_0_GENERATE_001, Model.VEO_3_0_GENERATE_PREVIEW, Model.VEO_3_0_FAST_GENERATE_PREVIEW].includes(activeBaseModel as Model) : false, [activeBaseModel]);
   const isThinkingModel = useMemo(() => activeBaseModel ? [Model.GEMINI_2_5_PRO, Model.GEMINI_2_5_FLASH, Model.GEMINI_2_5_FLASH_LITE].includes(activeBaseModel) : false, [activeBaseModel]);
   const isProModel = useMemo(() => activeBaseModel === Model.GEMINI_2_5_PRO, [activeBaseModel]);
   const isAttachmentDisabled = useMemo(() => {
@@ -822,7 +826,7 @@ You **MUST** respond with a single JSON object that conforms to this schema:
             const imageConfig = { numberOfImages, negativePrompt, seed, aspectRatio, personGeneration };
             fullResponse = await generateImage(prompt, modelForApi as any, imageConfig, signal);
         } else if (isVideoRequest) {
-            fullResponse = await generateVideo(prompt, attachments, Model.VEO_2_0_GENERATE_001, signal);
+            fullResponse = await generateVideo(prompt, attachments, modelForApi as any, signal);
         } else {
             const tools = [];
             if (isDeepResearchToggled) {
