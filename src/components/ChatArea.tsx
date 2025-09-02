@@ -356,7 +356,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   const [isToolsBottomSheetOpen, setIsToolsBottomSheetOpen] = useState(false);
   const toolsMenuRef = useRef<HTMLDivElement>(null);
   const [isVoiceRecording, setIsVoiceRecording] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isStreamingText, setIsStreamingText] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
@@ -474,6 +474,46 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     }
   };
   
+  const streamTextToInput = (text: string) => {
+    if (!text.trim()) return;
+    setIsStreamingText(true);
+
+    const words = text.split(/\s+/).filter(Boolean);
+    
+    let currentText = textareaRef.current?.value || '';
+    currentText = currentText.trim() ? currentText.trim() + ' ' : '';
+
+    let i = 0;
+    const intervalId = setInterval(() => {
+        if (i < words.length) {
+            currentText += words[i] + ' ';
+            setInput(currentText);
+            
+            const textarea = textareaRef.current;
+            if (textarea) {
+                textarea.style.height = 'auto';
+                textarea.style.height = `${textarea.scrollHeight}px`;
+                textarea.scrollTop = textarea.scrollHeight;
+            }
+            i++;
+        } else {
+            clearInterval(intervalId);
+            setInput(val => val.trim());
+            setIsStreamingText(false);
+            const textarea = textareaRef.current;
+            if(textarea) {
+              textarea.focus();
+              setTimeout(() => {
+                if (textarea) {
+                    textarea.style.height = 'auto';
+                    textarea.style.height = `${textarea.scrollHeight}px`;
+                }
+              }, 0);
+            }
+        }
+    }, 75);
+  };
+  
   const handleStopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
@@ -497,31 +537,14 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
-                if (typeof reader.result === 'string') {
-                    const dataUrlParts = reader.result.split(',');
-                    const base64Audio = dataUrlParts.length > 1 ? dataUrlParts[1] : undefined;
-                    if (base64Audio) {
-                        setIsTranscribing(true);
-                        try {
-                            const transcribedText = await transcribeAudio(base64Audio, 'audio/webm');
-                            setInput(prev => (prev ? prev.trim() + ' ' : '') + transcribedText);
-                            const textarea = textareaRef.current;
-                            if (textarea) {
-                                setTimeout(() => {
-                                    textarea.style.height = 'auto';
-                                    textarea.style.height = `${textarea.scrollHeight}px`;
-                                    textarea.focus();
-                                }, 0);
-                            }
-                        } catch (error) {
-                            console.error("Transcription failed:", error);
-                            alert("Sorry, I couldn't understand that. Please try again.");
-                        } finally {
-                            setIsTranscribing(false);
-                        }
-                    } else {
-                        console.error("Could not extract base64 data from audio data URL.");
-                        alert("Sorry, there was a problem processing the audio.");
+                const base64Audio = (reader.result as string).split(',')[1];
+                if (base64Audio) {
+                    try {
+                        const transcribedText = await transcribeAudio(base64Audio, 'audio/webm');
+                        streamTextToInput(transcribedText);
+                    } catch (error) {
+                        console.error("Transcription failed:", error);
+                        alert("Sorry, I couldn't understand that. Please try again.");
                     }
                 }
             };
@@ -544,14 +567,12 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
       }
   };
   
-  const isSendDisabled = isLoading || 
+  const isSendDisabled = isLoading || isStreamingText ||
     (!input.trim() && attachedFiles.length === 0) ||
     (isImageEditModel && attachedFiles.length === 0);
 
   const placeholder = isVoiceRecording
     ? "Recording... click mic to stop."
-    : isTranscribing
-    ? "Transcribing audio..."
     : isTextToImageModel 
     ? "Describe the image you want to generate..." 
     : isImageEditModel 
@@ -562,7 +583,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
 
   const renderMicOrSendButton = () => {
-      if (isTranscribing) {
+      if (isStreamingText) {
           return (
               <button
                   type="button"
@@ -732,7 +753,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                     }}
                     placeholder={placeholder}
                     className={`w-full resize-none focus:outline-none bg-transparent text-sm hover-scrollbar [scrollbar-gutter:stable] text-gray-800 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500 ${attachedFiles.length > 0 ? 'px-4 pt-2 pb-4' : 'p-4'}`}
-                    disabled={isLoading || isVoiceRecording || isTranscribing}
+                    disabled={isLoading || isVoiceRecording || isStreamingText}
                     style={{maxHeight: '200px'}}
                 />
                 <div className="flex justify-between items-center px-4 pb-3">

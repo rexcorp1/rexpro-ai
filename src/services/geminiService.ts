@@ -246,7 +246,7 @@ export async function transcribeAudio(audioBase64: string, mimeType: string): Pr
         };
         
         const response = await ai.models.generateContent({
-            model: Model.GEMINI_2_5_FLASH,
+            model: Model.GEMINI_2_0_FLASH_LITE,
             contents: { parts: [audioPart, textPart] },
         });
 
